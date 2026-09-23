@@ -15,7 +15,7 @@ import {
 } from '../../lib/umlMeta'
 import { Checkbox } from '../ui/checkbox'
 import { Input as UIInput } from '../ui/input'
-import { Button, Input, Select, Textarea, useToast } from '../ui'
+import { Button, IconAction, Input, Select, Textarea, Tip, useToast } from '../ui'
 import { Switch } from '../ui/switch'
 import { ElementGlyph, RelationGlyph } from './UmlGlyph'
 
@@ -270,9 +270,7 @@ function Header({ glyph, title, subtitle, onClose }: { glyph: ReactNode; title: 
         <p className="truncate text-[13px] font-semibold">{title}</p>
         <p className="truncate font-mono text-[10.5px] text-muted-foreground">{subtitle}</p>
       </div>
-      <button className="rounded-sm p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" onClick={onClose} aria-label="Fechar">
-        <X size={14} />
-      </button>
+      <IconAction label="Fechar editor" onClick={onClose}><X size={14} /></IconAction>
     </div>
   )
 }
@@ -302,10 +300,10 @@ function MembersEditor({ title, members, operations, onCommit }: {
 
   return (
     <Section title={`${title} (${members.length})`} action={
-      <button className="rounded-sm p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" title={`Adicionar ${operations ? 'operação' : 'atributo'}`}
+      <IconAction label={`Adicionar ${operations ? 'operação' : 'atributo'}`}
         onClick={() => setRows([...rows, { name: '', visibility: operations ? '+' : '-', type: '' }])}>
         <Plus size={14} />
-      </button>
+      </IconAction>
     }>
       <div className="space-y-1 px-3" onBlur={(e) => {
         // Grava quando o foco sai do bloco inteiro, não a cada campo.
@@ -329,13 +327,15 @@ function MembersEditor({ title, members, operations, onCommit }: {
                 onChange={(e) => update(i, { type: e.target.value })} />
             </div>
             <div className="flex items-center gap-0.5">
-              <label className="flex items-center gap-1 px-0.5 text-[10.5px] text-muted-foreground" title="Estático (sublinhado)">
-                <Checkbox checked={!!m.static} onCheckedChange={(v) => update(i, { static: v === true }, true)} />S
-              </label>
-              <button className="rounded-sm p-0.5 text-muted-foreground hover:bg-accent hover:text-destructive" aria-label="Remover"
+              <Tip label="Estático (exibido sublinhado)">
+                <label className="flex items-center gap-1 px-0.5 text-[10.5px] text-muted-foreground">
+                  <Checkbox checked={!!m.static} onCheckedChange={(v) => update(i, { static: v === true }, true)} />S
+                </label>
+              </Tip>
+              <IconAction label="Remover membro" className="hover:text-destructive"
                 onClick={() => { const next = rows.filter((_, j) => j !== i); setRows(next); commit(next) }}>
                 <X size={13} />
-              </button>
+              </IconAction>
             </div>
           </div>
         ))}
@@ -396,10 +396,10 @@ function RelationEditor({ diagram, rel, onClose }: { diagram: UMLDiagram; rel: U
             <span className="text-muted-foreground">→</span>
             <span className="truncate">{name(rel.target)}</span>
             {rel.source !== rel.target && (
-              <button className="ml-auto rounded-sm p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" title="Inverter sentido"
+              <IconAction label="Inverter sentido" className="ml-auto"
                 onClick={() => void patch({ source: rel.target, target: rel.source })}>
                 <ArrowLeftRight size={13} />
-              </button>
+              </IconAction>
             )}
           </div>
         </Prop>

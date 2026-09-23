@@ -9,6 +9,7 @@ import { NODE_META } from '../../lib/nodeMeta'
 import type { Tool } from '../../lib/tools'
 import type { NodeType, UMLKind } from '../../lib/types'
 import { ELEMENT_LABEL, KIND_META, RELATION_LABEL } from '../../lib/umlMeta'
+import { Tip } from '../ui'
 import { ElementGlyph, RelationGlyph } from '../uml/UmlGlyph'
 
 export type ToolboxContext = { type: 'uml'; kind: UMLKind } | { type: 'arch' } | null
@@ -48,7 +49,7 @@ export function Toolbox({ context, tool, onTool }: {
               const Icon = meta.icon
               return (
                 <ToolRow key={type} label={meta.label} title={meta.hint}
-                  icon={<Icon size={14} style={{ color: meta.color }} />}
+                  icon={<Icon size={14} />}
                   active={tool.mode === 'arch' && tool.type === type}
                   onClick={() => onTool(tool.mode === 'arch' && tool.type === type ? { mode: 'select' } : { mode: 'arch', type })}
                   drag={{ mime: 'application/archcode-node', payload: { type } }} />
@@ -82,7 +83,7 @@ export function Toolbox({ context, tool, onTool }: {
         ))}
       </Group>
       <p className="px-3 pt-2 text-[11px] leading-relaxed text-muted-foreground">
-        Relações: escolha a ferramenta e clique na origem e no destino, ou arraste entre as alças azuis.
+        Relações: escolha a ferramenta e clique na origem e no destino, ou arraste entre as alças dos elementos.
       </p>
     </div>
   )
@@ -106,7 +107,7 @@ function ToolRow({ label, icon, active, onClick, drag, hint, title }: {
   label: string; icon: ReactNode; active: boolean; onClick: () => void
   drag?: { mime: string; payload: unknown }; hint?: string; title?: string
 }) {
-  return (
+  const row = (
     <button
       draggable={!!drag}
       onDragStart={drag ? (e) => {
@@ -114,16 +115,18 @@ function ToolRow({ label, icon, active, onClick, drag, hint, title }: {
         e.dataTransfer.effectAllowed = 'copy'
       } : undefined}
       onClick={onClick}
-      title={title ?? label}
+      aria-pressed={active}
       className={cn(
-        'flex h-7 w-full items-center gap-2 rounded-sm px-2 text-left text-[12.5px] transition-colors',
-        active ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-accent hover:text-accent-foreground',
+        'flex h-7 w-full items-center gap-2 rounded-sm border px-2 text-left text-[12.5px] transition-colors',
+        active ? 'border-border bg-accent font-medium text-accent-foreground' : 'border-transparent text-foreground hover:bg-accent/70',
         drag && 'cursor-grab active:cursor-grabbing',
       )}
     >
-      <span className={cn('flex w-4 justify-center', active ? 'text-primary-foreground' : 'text-muted-foreground')}>{icon}</span>
+      <span className={cn('flex w-4 justify-center', active ? 'text-foreground' : 'text-muted-foreground')}>{icon}</span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {hint && <kbd className="font-mono text-[10px] opacity-60">{hint}</kbd>}
     </button>
   )
+  // Descrições mais longas que o rótulo (ex.: "API Gateway, load balancer…") viram tooltip.
+  return title && title !== label ? <Tip label={title} side="right">{row}</Tip> : row
 }

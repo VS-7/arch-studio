@@ -184,10 +184,10 @@ export function PitchMode({ snapshot, estimate, onExit }: {
               ))}
             </div>
             <span className="w-14 text-right text-xs tabular-nums text-muted-app">{index + 1} / {slides.length}</span>
-            <Button variant="secondary" size="icon" icon={ChevronLeft} onClick={() => go(index - 1)}
-              disabled={index === 0} aria-label="Slide anterior" />
-            <Button variant="primary" size="icon" icon={ChevronRight} onClick={() => go(index + 1)}
-              disabled={index === slides.length - 1} aria-label="Próximo slide" />
+            <Button variant="secondary" size="icon" icon={ChevronLeft} aria-label="Slide anterior (←)" onClick={() => go(index - 1)}
+              disabled={index === 0} />
+            <Button variant="primary" size="icon" icon={ChevronRight} aria-label="Próximo slide (→)" onClick={() => go(index + 1)}
+              disabled={index === slides.length - 1} />
           </div>
         </div>
       </footer>

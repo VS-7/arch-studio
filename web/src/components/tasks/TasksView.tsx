@@ -119,7 +119,7 @@ export function TasksView({ snapshot, onGeneratePRD }: { snapshot: Snapshot; onG
                             ? <Badge color="#10b981">pronta para começar</Badge>
                             : <Badge color="#f59e0b"><Lock size={9} /> aguarda {blockedBy.length}</Badge>
                         )}
-                        {(task.requirements ?? []).map((r) => <Badge key={r} color="#0ea5e9">{r}</Badge>)}
+                        {(task.requirements ?? []).map((r) => <Badge key={r}>{r}</Badge>)}
                         {(task.use_cases ?? []).map((u) => <Badge key={u} color="#8b5cf6">{u}</Badge>)}
                       </div>
                     </div>

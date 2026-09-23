@@ -6,7 +6,7 @@
 // pelo evento `uml_changed`.
 
 import {
-  Background, BackgroundVariant, ConnectionMode, Controls, MiniMap, ReactFlow, ViewportPortal,
+  Background, BackgroundVariant, ConnectionMode, MiniMap, ReactFlow, ViewportPortal,
   getNodesBounds, getViewportForBounds, useEdgesState, useNodesState,
   type Connection, type NodeChange, type ReactFlowInstance, type XYPosition,
 } from '@xyflow/react'
@@ -19,6 +19,7 @@ import {
   CONTAINS, KIND_META, RELATION_LABEL, SEQ, elementSize, isContainer, lifelineHeight, nextElementName,
   relationFor, sortedMessages,
 } from '../../lib/umlMeta'
+import { CanvasControls } from '../canvas/CanvasControls'
 import { useToast } from '../ui'
 import { MessageEdge, UmlEdge, UmlMarkers, type UmlFlowEdge } from './UmlEdges'
 import { UmlNode, type UmlFlowNode } from './UmlNodes'
@@ -417,7 +418,7 @@ export function UmlCanvas({
         {/* Marcadores dentro do viewport: entram também na exportação de imagem. */}
         <ViewportPortal><UmlMarkers /></ViewportPortal>
         <Background variant={BackgroundVariant.Lines} gap={20} lineWidth={0.6} color="var(--canvas-grid)" />
-        <Controls position="bottom-left" showInteractive={false} />
+        <CanvasControls />
         <MiniMap position="bottom-right" pannable zoomable nodeStrokeWidth={1.5} nodeBorderRadius={2}
           nodeColor="var(--uml-fill-alt)" nodeStrokeColor="var(--uml-stroke)"
           maskColor="color-mix(in oklab, var(--canvas-bg) 60%, transparent)" />

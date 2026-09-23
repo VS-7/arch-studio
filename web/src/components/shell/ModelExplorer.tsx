@@ -15,6 +15,7 @@ import { ELEMENT_LABEL, KIND_META, UML_KINDS } from '../../lib/umlMeta'
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
 } from '../ui/context-menu'
+import { IconAction } from '../ui'
 import { ElementGlyph, KindGlyph } from '../uml/UmlGlyph'
 
 interface Props {
@@ -63,7 +64,7 @@ export function ModelExplorer(props: Props) {
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto py-1 text-[12.5px]">
-        <Row depth={0} icon={<Box size={14} className="text-primary" />} label={snapshot.manifest.project_name} bold
+        <Row depth={0} icon={<Box size={14} className="text-foreground" />} label={snapshot.manifest.project_name} bold
           expandable open={open.has('root')} onToggle={() => toggle('root')} />
         {open.has('root') && (
           <>
@@ -76,7 +77,7 @@ export function ModelExplorer(props: Props) {
               const meta = nodeMeta(n.type)
               const Icon = meta.icon
               return (
-                <Row key={n.id} depth={2} icon={<Icon size={13} style={{ color: meta.color }} />} label={n.data.label}
+                <Row key={n.id} depth={2} icon={<Icon size={13} className="text-muted-foreground" />} label={n.data.label}
                   active={selection?.scope === 'arch' && selection.id === n.id}
                   onClick={() => props.onSelectArchNode(n.id)} />
               )
@@ -108,7 +109,7 @@ export function ModelExplorer(props: Props) {
                   </ContextMenu>
                   {isOpen && diagrams.length === 0 && !q && (
                     <button onClick={() => props.onCreateDiagram(kind)}
-                      className="block py-0.5 text-left text-[11.5px] text-muted-foreground hover:text-primary" style={{ paddingLeft: 3 * 14 + 6 }}>
+                      className="block py-0.5 text-left text-[11.5px] text-muted-foreground hover:text-foreground hover:underline" style={{ paddingLeft: 3 * 14 + 6 }}>
                       + criar diagrama
                     </button>
                   )}
@@ -161,7 +162,7 @@ function DiagramNode({ diagram, query, open, onToggle, active, selection, onOpen
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div>
-            <Row depth={2} icon={<span className="text-primary"><KindGlyph kind={diagram.kind} size={14} /></span>}
+            <Row depth={2} icon={<span className="text-foreground"><KindGlyph kind={diagram.kind} size={14} /></span>}
               label={diagram.name} count={diagram.elements.length}
               expandable open={open} onToggle={onToggle} active={active}
               onClick={() => onOpen({ type: 'uml', id: diagram.id })} />
@@ -212,11 +213,10 @@ function Row({ depth, icon, label, count, bold, muted, expandable, open, onToggl
       <span className={cn('min-w-0 flex-1 truncate', bold && 'font-semibold', muted && 'italic text-muted-foreground')}>{label}</span>
       {count !== undefined && <span className="text-[10.5px] tabular-nums text-muted-foreground">{count}</span>}
       {action && (
-        <button title={action.title}
-          className="hidden size-4 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground group-hover:flex"
+        <IconAction label={action.title} className="size-4 p-0 opacity-0 hover:bg-background focus-visible:opacity-100 group-hover:opacity-100"
           onClick={(e) => { e.stopPropagation(); action.onClick() }}>
           {action.icon}
-        </button>
+        </IconAction>
       )}
     </div>
   )

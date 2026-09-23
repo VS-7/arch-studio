@@ -57,7 +57,7 @@ export function UseCasesPanel({ snapshot, focusCode }: { snapshot: Snapshot; foc
                     </p>
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       <Badge color="#8b5cf6">{uc.complexity ?? 'medium'}</Badge>
-                      {uc.estimated_hours ? <Badge color="#0ea5e9">{uc.estimated_hours}h</Badge> : null}
+                      {uc.estimated_hours ? <Badge>{uc.estimated_hours}h</Badge> : null}
                       {(uc.components ?? []).map((c) => {
                         const label = snapshot.diagram.nodes.find((n) => n.id === c)?.data.label ?? c
                         return <Badge key={c} color="#10b981">{label}</Badge>

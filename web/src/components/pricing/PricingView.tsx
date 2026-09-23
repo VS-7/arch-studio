@@ -78,7 +78,7 @@ export function PricingView({ snapshot }: { snapshot: Snapshot }) {
 
       <div className="mb-4 grid gap-3 @lg:grid-cols-2 @5xl:grid-cols-4">
         <Stat label="Esforço total" value={fmtHours(estimate.total_hours)}
-          sub={`${fmtHours(estimate.base_hours)} + ${fmtHours(estimate.margin_hours)} de contingência`} accent="#0ea5e9" />
+          sub={`${fmtHours(estimate.base_hours)} + ${fmtHours(estimate.margin_hours)} de contingência`} />
         <Stat label="Investimento" value={money(cur, estimate.total_cost)}
           sub={`${money(cur, estimate.personnel_cost)} + impostos`} accent="#10b981" />
         <Stat label="Infraestrutura" value={`${money(cur, estimate.cloud_monthly_cost)}/mês`}

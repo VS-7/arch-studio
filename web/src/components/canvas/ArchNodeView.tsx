@@ -43,7 +43,6 @@ function ArchNodeViewImpl({ data, selected, type }: NodeProps<ArchFlowNode>) {
         background: 'var(--uml-fill)',
         color: 'var(--uml-text)',
         border: `1.3px ${kind === 'external_service' ? 'dashed' : 'solid'} var(--uml-stroke)`,
-        borderTop: `3px solid ${meta.color}`,
         borderRadius: 2,
       }}
     >
@@ -56,7 +55,7 @@ function ArchNodeViewImpl({ data, selected, type }: NodeProps<ArchFlowNode>) {
         <span className="min-w-0 flex-1 text-center text-[11px] leading-tight" style={{ color: 'var(--uml-muted)' }}>
           «{STEREOTYPE[kind] ?? kind}»
         </span>
-        <Icon size={13} className="absolute right-2 top-2" style={{ color: meta.color }} />
+        <Icon size={13} className="absolute right-2 top-2" style={{ color: 'var(--uml-muted)' }} />
         {status && (
           <span className="absolute left-2 top-2.5 size-2 rounded-full" style={{ backgroundColor: status.dot }}
             title={status.label} />
@@ -85,8 +84,8 @@ function ArchNodeViewImpl({ data, selected, type }: NodeProps<ArchFlowNode>) {
                   </span>
                 )}
                 {data.tags?.slice(0, 2).map((tag) => (
-                  <span key={tag} className="rounded-sm px-1 text-[9.5px] font-semibold"
-                    style={{ backgroundColor: `color-mix(in oklab, ${meta.color} 14%, transparent)`, color: meta.color }}>
+                  <span key={tag} className="rounded-sm border px-1 text-[9.5px] font-semibold"
+                    style={{ color: 'var(--uml-text)' }}>
                     {tag}
                   </span>
                 ))}

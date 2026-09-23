@@ -16,6 +16,7 @@ import { Button as UIButton } from './button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './dialog'
 import { Input as UIInput } from './input'
 import { Textarea as UITextarea } from './textarea'
+import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip'
 
 /** Alias histórico de `cn`. */
 export function cx(...parts: (string | false | null | undefined)[]): string {
@@ -44,13 +45,44 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export function Button({
-  variant = 'secondary', size = 'md', icon: Icon, loading, children, disabled, ...rest
+  variant = 'secondary', size = 'md', icon: Icon, loading, children, disabled, title, ...rest
 }: ButtonProps) {
-  return (
-    <UIButton {...rest} variant={VARIANT_MAP[variant]} size={SIZE_MAP[size]} disabled={disabled || loading}>
+  // Botões só com ícone ganham tooltip do design system em vez do `title` nativo.
+  const tip = size === 'icon' ? title ?? rest['aria-label'] : undefined
+  const button = (
+    <UIButton {...rest} title={tip ? undefined : title} aria-label={rest['aria-label'] ?? tip}
+      variant={VARIANT_MAP[variant]} size={SIZE_MAP[size]} disabled={disabled || loading}>
       {loading ? <Loader2 className="animate-spin" /> : Icon ? <Icon /> : null}
       {children}
     </UIButton>
+  )
+  return tip ? <Tip label={tip}>{button}</Tip> : button
+}
+
+/** Tooltip do shadcn/ui em volta de qualquer elemento interativo. */
+export function Tip({ label, children, side }: {
+  label: ReactNode; children: React.ReactElement; side?: 'top' | 'right' | 'bottom' | 'left'
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side={side}>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+/** Botão compacto só com ícone (painéis, árvores, cabeçalhos), sempre com tooltip. */
+export function IconAction({ label, onClick, children, className, side }: {
+  label: string; onClick: (e: React.MouseEvent) => void; children: ReactNode; className?: string
+  side?: 'top' | 'right' | 'bottom' | 'left'
+}) {
+  return (
+    <Tip label={label} side={side}>
+      <button type="button" aria-label={label} onClick={onClick}
+        className={cn('flex items-center justify-center rounded-sm p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground', className)}>
+        {children}
+      </button>
+    </Tip>
   )
 }
 
@@ -226,10 +258,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="pointer-events-none fixed bottom-9 right-4 z-[60] flex w-80 flex-col gap-2">
+      {/* Topo central, abaixo da barra de menus e das abas: não cobre Toolbox, Editor,
+          controles do canvas nem a barra de status. */}
+      <div className="pointer-events-none fixed left-1/2 top-[4.75rem] z-[60] flex w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 flex-col items-center gap-2">
         {toasts.map((t) => (
-          <div key={t.id}
-            className="pointer-events-auto flex items-start gap-2.5 rounded-md border bg-popover px-3 py-2.5 text-[12.5px] text-popover-foreground shadow-lg animate-in fade-in-0 slide-in-from-bottom-2">
+          <div key={t.id} role="status"
+            className="pointer-events-auto flex w-full items-start gap-2.5 rounded-md border bg-popover px-3 py-2.5 text-[12.5px] text-popover-foreground shadow-lg animate-in fade-in-0 slide-in-from-top-2">
             <span className="mt-1 size-2 shrink-0 rounded-full" style={{ backgroundColor: TOAST_ACCENT[t.kind] }} />
             <span className="min-w-0 flex-1 break-words">{t.message}</span>
             <button className="text-muted-foreground hover:text-foreground" aria-label="Fechar"

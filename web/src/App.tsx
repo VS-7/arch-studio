@@ -24,7 +24,7 @@ import { AppMenubar, type MenuActions } from './components/shell/AppMenubar'
 import { ModelExplorer } from './components/shell/ModelExplorer'
 import { Toolbox, type ToolboxContext } from './components/shell/Toolbox'
 import { TasksView } from './components/tasks/TasksView'
-import { Badge, Button, Modal, Spinner, ToastProvider, useToast } from './components/ui'
+import { Badge, Button, IconAction, Modal, Spinner, Tip, ToastProvider, useToast } from './components/ui'
 import { Button as UIButton } from './components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip'
 import { UmlCanvas, type UmlCanvasHandle } from './components/uml/UmlCanvas'
@@ -343,7 +343,7 @@ function Shell() {
     <div className="flex h-full flex-col bg-background text-foreground">
       {/* Barra de título + menus ------------------------------------------------ */}
       <header className="flex h-9 shrink-0 items-center gap-2 border-b bg-chrome px-2">
-        <span className="flex size-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
+        <span className="flex size-6 items-center justify-center rounded-sm border bg-background text-foreground">
           <Waypoints size={14} />
         </span>
         <AppMenubar actions={actions} theme={theme.preference} onTheme={theme.setPreference}
@@ -484,10 +484,12 @@ function Shell() {
 
       {/* Barra de status ------------------------------------------------------------ */}
       <footer className="flex h-6 shrink-0 items-center gap-3 bg-statusbar px-2.5 text-[11.5px] text-statusbar-foreground">
-        <span className="flex items-center gap-1.5" title={connected ? 'Sincronização em tempo real ativa' : 'Reconectando ao servidor…'}>
-          <span className={cn('size-1.5 rounded-full', connected ? 'bg-emerald-300' : 'animate-pulse bg-amber-300')} />
-          {connected ? 'Sincronizado' : 'Reconectando…'}
-        </span>
+        <Tip label={connected ? 'Sincronização em tempo real ativa' : 'Reconectando ao servidor…'} side="top">
+          <span className="flex items-center gap-1.5">
+            <span className={cn('size-1.5 rounded-full', connected ? 'bg-success' : 'animate-pulse bg-warning')} />
+            {connected ? 'Sincronizado' : 'Reconectando…'}
+          </span>
+        </Tip>
         {statusPath && <span className="truncate font-mono opacity-90">{statusPath}</span>}
         {activeDiagram && (
           <span className="opacity-90">{activeDiagram.elements.length} elementos · {activeDiagram.relations.length} relações</span>
@@ -495,15 +497,16 @@ function Shell() {
         {archActive && (
           <span className="opacity-90">{snapshot.diagram.nodes.length} componentes · {snapshot.diagram.edges.length} conexões</span>
         )}
-        {tool.mode !== 'select' && <span className="rounded-sm bg-white/15 px-1.5">Ferramenta ativa · Esc cancela</span>}
+        {tool.mode !== 'select' && <span className="rounded-sm bg-accent px-1.5">Ferramenta ativa · Esc cancela</span>}
         <div className="ml-auto flex items-center gap-3">
           {lastEvent?.at && <span className="hidden opacity-80 md:inline">última alteração {relativeTime(lastEvent.at)}</span>}
           {lint && (
-            <button onClick={() => setLintOpen(true)} className="flex items-center gap-1 rounded-sm px-1 hover:bg-white/15"
-              title="Relatório de validação da arquitetura">
+            <Tip label="Relatório de validação da arquitetura" side="top">
+            <button onClick={() => setLintOpen(true)} className="flex items-center gap-1 rounded-sm px-1 hover:bg-accent">
               {lint.errors > 0 || lint.warnings > 0 ? <AlertTriangle size={12} /> : <CheckCircle2 size={12} />}
               Qualidade {lint.score}
             </button>
+            </Tip>
           )}
           {(archActive || activeDiagram) && <span className="tabular-nums">{Math.round(zoom * 100)}%</span>}
         </div>
@@ -558,22 +561,19 @@ function TabStrip({ tabs, active, diagrams, onActivate, onClose }: {
               'group relative flex h-8 max-w-[220px] shrink-0 cursor-default items-center gap-1.5 border-r px-3 text-[12.5px]',
               isActive ? 'bg-tab-active text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
             )}
-            title={d?.file ?? label}
           >
-            {isActive && <span className="absolute inset-x-0 top-0 h-0.5 bg-primary" />}
-            <span className={isActive ? 'text-primary' : ''}>
+            {isActive && <span className="absolute inset-x-0 top-0 h-0.5 bg-foreground/70" />}
+            <span>
               {t.type === 'uml' && d ? <KindGlyph kind={d.kind} size={13} />
                 : t.type === 'arch' ? <Waypoints size={13} />
                   : t.type === 'view' ? <ViewIcon view={t.view} /> : null}
             </span>
             <span className="truncate">{label}</span>
-            <button
+            <IconAction label="Fechar aba (clique do meio)"
               onClick={(e) => { e.stopPropagation(); onClose(key) }}
-              className={cn('ml-0.5 rounded-sm p-0.5 hover:bg-accent', isActive ? 'opacity-70' : 'opacity-0 group-hover:opacity-70')}
-              aria-label={`Fechar ${label}`}
-            >
+              className={cn('ml-0.5', isActive ? 'opacity-80' : 'opacity-0 group-hover:opacity-80')}>
               <X size={12} />
-            </button>
+            </IconAction>
           </div>
         )
       })}
@@ -627,7 +627,7 @@ function DiagramSummary({ diagram, onRename, onMermaid, onExport }: {
   return (
     <div className="space-y-3 p-3">
       <div className="flex items-start gap-2">
-        <span className="mt-0.5 text-primary"><KindGlyph kind={diagram.kind} size={18} /></span>
+        <span className="mt-0.5"><KindGlyph kind={diagram.kind} size={18} /></span>
         <div className="min-w-0">
           <p className="truncate text-[13px] font-semibold">{diagram.name}</p>
           <p className="text-[11.5px] text-muted-foreground">{KIND_META[diagram.kind].label}</p>

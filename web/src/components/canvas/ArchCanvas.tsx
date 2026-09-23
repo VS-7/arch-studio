@@ -5,9 +5,9 @@
 // são alteradas — nenhum outro campo do macro.json é tocado pela UI de canvas.
 
 import {
-  Background, BackgroundVariant, ConnectionLineType, Controls, MiniMap, ReactFlow,
+  Background, BackgroundVariant, ConnectionLineType, MiniMap, ReactFlow,
   addEdge, useEdgesState, useNodesState,
-  type Connection, type Edge, type Node, type NodeChange, type OnConnect, type ReactFlowInstance,
+  type Connection, type Edge, type NodeChange, type OnConnect, type ReactFlowInstance,
 } from '@xyflow/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../../lib/api'
@@ -15,6 +15,7 @@ import { nodeMeta } from '../../lib/nodeMeta'
 import type { Tool } from '../../lib/tools'
 import type { ArchEdge, ArchNode, Diagram, NodeType } from '../../lib/types'
 import { useToast } from '../ui'
+import { CanvasControls } from './CanvasControls'
 import { ArchNodeView, GroupNodeView, type ArchFlowNode } from './ArchNodeView'
 
 const nodeTypes = { arch: ArchNodeView, group: GroupNodeView }
@@ -251,13 +252,13 @@ export function ArchCanvas({
         {interactive && (
           <>
             <Background variant={BackgroundVariant.Lines} gap={20} lineWidth={0.6} color="var(--canvas-grid)" />
-            <Controls position="bottom-left" showInteractive={false} />
+            <CanvasControls />
             <MiniMap
               position="bottom-right"
               pannable
               zoomable
               nodeStrokeWidth={3}
-              nodeColor={(node: Node) => nodeMeta(String((node.data as { __type?: string }).__type ?? 'compute')).color}
+              nodeColor="var(--uml-fill-alt)" nodeStrokeColor="var(--uml-stroke)" nodeBorderRadius={2}
               maskColor="color-mix(in oklab, var(--canvas-bg) 70%, transparent)"
             />
           </>

@@ -97,7 +97,7 @@ export function RequirementsPanel({ snapshot }: { snapshot: Snapshot }) {
                     <Badge color={PRIORITY_COLOR[r.priority ?? 'Média'] ?? '#64748b'}>{r.priority ?? 'Média'}</Badge>
                     {(r.components ?? []).map((c) => {
                       const label = snapshot.diagram.nodes.find((n) => n.id === c)?.data.label ?? c
-                      return <Badge key={c} color="#0ea5e9">{label}</Badge>
+                      return <Badge key={c}>{label}</Badge>
                     })}
                   </div>
                 </div>
