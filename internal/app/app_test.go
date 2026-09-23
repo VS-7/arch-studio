@@ -239,6 +239,29 @@ func TestRemocaoLimpaDependentes(t *testing.T) {
 	}
 }
 
+// A UI exclui em lote (e desfaz) gravando o diagrama inteiro: os contratos dos
+// componentes que saíram também precisam sair, como no RemoveNode.
+func TestReplaceDiagramLimpaContratosOrfaos(t *testing.T) {
+	a, st := newTestApp(t)
+	_, _ = a.AddNode(NodeInput{Label: "API", Type: "compute"}, hub.SourceAI)
+	_, _ = a.AddNode(NodeInput{Label: "DB", Type: "database"}, hub.SourceAI)
+	_, _, _ = a.ConnectNodes(EdgeInput{
+		SourceID: "API", TargetID: "DB", Protocol: "SQL",
+		Endpoints: []EndpointInput{{Method: "GET", Path: "/api/v1/items"}},
+	}, hub.SourceAI)
+
+	d, _ := st.LoadDiagram()
+	d.Nodes = d.Nodes[:1] // mantém só a API
+	d.Edges = nil
+	if err := a.ReplaceDiagram(d, hub.SourceUI); err != nil {
+		t.Fatalf("ReplaceDiagram: %v", err)
+	}
+	spec, _ := st.LoadEndpoints()
+	if len(spec.Endpoints) != 0 {
+		t.Errorf("contratos órfãos remanescentes: %+v", spec.Endpoints)
+	}
+}
+
 // As escritas são serializadas: chamadas concorrentes não podem se perder.
 func TestEscritasConcorrentesNaoSePerdem(t *testing.T) {
 	a, st := newTestApp(t)

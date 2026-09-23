@@ -12,6 +12,7 @@ import { api } from '../../lib/api'
 import type { Requirement, Snapshot } from '../../lib/types'
 import { renderMarkdown } from '../../lib/markdown'
 import { Badge, Button, Card, Field, Input, Modal, Select, Textarea, useToast } from '../ui'
+import { useConfirm } from '../ui/confirm'
 
 const PRIORITY_COLOR: Record<string, string> = { Alta: '#f43f5e', Média: '#f59e0b', Baixa: '#64748b' }
 
@@ -19,6 +20,7 @@ const EMPTY: Requirement = { id: '', type: 'RF', title: '', priority: 'Média', 
 
 export function RequirementsPanel({ snapshot }: { snapshot: Snapshot }) {
   const toast = useToast()
+  const confirm = useConfirm()
   const [editing, setEditing] = useState<Requirement | null>(null)
   const [rawMode, setRawMode] = useState(false)
   const [raw, setRaw] = useState('')
@@ -64,7 +66,7 @@ export function RequirementsPanel({ snapshot }: { snapshot: Snapshot }) {
   }
 
   const remove = async (id: string) => {
-    if (!window.confirm(`Remover o requisito ${id}?`)) return
+    if (!await confirm({ title: `Remover o requisito ${id}?`, description: 'O requisito sai de docs/requisitos.md.', confirmLabel: 'Remover', destructive: true })) return
     try {
       await api.deleteRequirement(id)
       toast('success', `${id} removido`)

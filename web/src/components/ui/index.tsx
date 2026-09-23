@@ -233,9 +233,14 @@ export function Modal({ open, onClose, title, description, children, footer, wid
 
 export type ToastKind = 'info' | 'success' | 'error' | 'ai'
 
-interface Toast { id: number; kind: ToastKind; message: string }
+/** Ação opcional exibida no toast (ex.: "Desfazer"). */
+export interface ToastAction { label: string; onClick: () => void }
 
-const ToastContext = createContext<(kind: ToastKind, message: string) => void>(() => {})
+interface Toast { id: number; kind: ToastKind; message: string; action?: ToastAction }
+
+type ToastFn = (kind: ToastKind, message: string, action?: ToastAction) => void
+
+const ToastContext = createContext<ToastFn>(() => {})
 
 export function useToast() { return useContext(ToastContext) }
 
@@ -247,10 +252,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
   const seq = useRef(0)
 
-  const push = useCallback((kind: ToastKind, message: string) => {
+  const push = useCallback<ToastFn>((kind, message, action) => {
     const id = ++seq.current
-    setToasts((prev) => [...prev.slice(-4), { id, kind, message }])
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), kind === 'error' ? 7000 : 3800)
+    setToasts((prev) => [...prev.slice(-4), { id, kind, message, action }])
+    // Toasts com ação ficam mais tempo na tela, para dar tempo de desfazer.
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), kind === 'error' ? 7000 : action ? 6000 : 3800)
   }, [])
 
   const value = useMemo(() => push, [push])
@@ -266,6 +272,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             className="pointer-events-auto flex w-full items-start gap-2.5 rounded-md border bg-popover px-3 py-2.5 text-[12.5px] text-popover-foreground shadow-lg animate-in fade-in-0 slide-in-from-top-2">
             <span className="mt-1 size-2 shrink-0 rounded-full" style={{ backgroundColor: TOAST_ACCENT[t.kind] }} />
             <span className="min-w-0 flex-1 break-words">{t.message}</span>
+            {t.action && (
+              <button className="shrink-0 rounded-sm px-1.5 text-[12px] font-semibold underline-offset-2 hover:underline"
+                onClick={() => { t.action!.onClick(); setToasts((prev) => prev.filter((x) => x.id !== t.id)) }}>
+                {t.action.label}
+              </button>
+            )}
             <button className="text-muted-foreground hover:text-foreground" aria-label="Fechar"
               onClick={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}>
               <X size={13} />

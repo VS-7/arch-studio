@@ -137,9 +137,36 @@ para a área de desenho.
 | **Implementação** | Fila de tarefas em ordem topológica, com dependências, critérios de aceite e progresso — a mesma que a IA consome. |
 | **Pitch** | Apresentação em tela cheia com zoom cinematográfico por componente, alternância negócio/engenharia e exportação em SVG, PNG e PDF. |
 
-Atalhos nos diagramas: `Esc` volta à ferramenta Selecionar, `Del` exclui a seleção, `Shift+1` ajusta à
-tela, `+`/`−` aproxima e afasta. No Modo Pitch: `→`/`←` navega, `E` alterna executivo/engenharia,
-`F` tela cheia, `Esc` sai.
+### Edição no canvas
+
+Como no StarUML, dá para modelar sem voltar à Toolbox:
+
+- **Clique direito** no vazio: *Adicionar aqui* (qualquer forma do diagrama), colar, selecionar tudo.
+  Em um elemento: *Adicionar conectado* (subclasse, interface realizada, caso incluído, próximo estado,
+  mensagem para nova linha de vida…), *Adicionar dentro* (pacotes, fronteiras, estados compostos),
+  atributos/operações, renomear, copiar, recortar, duplicar e excluir.
+- **Barra rápida**: ao selecionar um elemento, aparece acima dele uma barra com os atalhos de
+  *Adicionar conectado* — um clique cria o elemento já ligado e posicionado.
+- **Duplo clique** no vazio abre *Adicionar aqui* na posição do cursor; em um elemento, renomeia.
+- **Seleção múltipla** por caixa (arrastar no vazio), `Ctrl`/`Shift`+clique ou `Ctrl+A`; `Del` exclui
+  tudo de uma vez, sem diálogo de confirmação — a exclusão é desfazível.
+
+| Atalho | Ação |
+| :--- | :--- |
+| `Ctrl+Z` / `Ctrl+Y` (ou `Ctrl+Shift+Z`) | Desfazer / refazer — vale para qualquer mudança no diagrama, inclusive as feitas por IA |
+| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copiar, recortar e colar (as relações entre os elementos copiados vão junto) |
+| `Ctrl+D` | Duplicar a seleção |
+| `Ctrl+A` | Selecionar tudo |
+| `Del` / `Backspace` | Excluir a seleção |
+| `F2` | Renomear o elemento selecionado |
+| `Esc` | Voltar à ferramenta Selecionar / cancelar relação |
+| `Shift+1`, `+`, `−` | Ajustar à tela, aproximar, afastar |
+
+Cada operação de edição grava o diagrama inteiro num único passo, então um `Ctrl+Z` desfaz a operação
+toda (por exemplo, colar 5 elementos). Excluir arquivos — diagramas, fichas, requisitos, ADRs e
+contratos — pede confirmação num diálogo, pois isso não entra no histórico.
+
+No Modo Pitch: `→`/`←` navega, `E` alterna executivo/engenharia, `F` tela cheia, `Esc` sai.
 
 ---
 

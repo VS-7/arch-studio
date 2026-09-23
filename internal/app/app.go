@@ -521,8 +521,35 @@ func (a *App) ReplaceDiagram(d *model.Diagram, source string) error {
 	if err := a.saveDiagram(d); err != nil {
 		return err
 	}
+	a.pruneOrphanEndpoints(d, source)
 	a.emit(hub.Event{Type: hub.EventDiagram, Source: source, Path: store.FileMacroJSON})
 	return nil
+}
+
+// pruneOrphanEndpoints remove de api/endpoints.yaml os contratos cujo componente
+// de origem ou destino saiu do diagrama — o que RemoveNode já faz para um nó,
+// estendido às exclusões em lote e ao desfazer da UI (PUT do diagrama inteiro).
+func (a *App) pruneOrphanEndpoints(d *model.Diagram, source string) {
+	spec, err := a.st.LoadEndpoints()
+	if err != nil {
+		return
+	}
+	kept := spec.Endpoints[:0]
+	removed := false
+	for _, e := range spec.Endpoints {
+		if (e.Source != "" && d.NodeByID(e.Source) == nil) || (e.Target != "" && d.NodeByID(e.Target) == nil) {
+			removed = true
+			continue
+		}
+		kept = append(kept, e)
+	}
+	if !removed {
+		return
+	}
+	spec.Endpoints = kept
+	if err := a.st.SaveEndpoints(spec); err == nil {
+		a.emit(hub.Event{Type: hub.EventEndpoints, Source: source, Path: store.FileEndpoints})
+	}
 }
 
 // AutoLayout reorganiza o canvas por camadas topológicas, a pedido do usuário.

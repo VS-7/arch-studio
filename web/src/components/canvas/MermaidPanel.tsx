@@ -37,11 +37,10 @@ export function MermaidPanel({ open, onClose, snapshot }: {
 
   const doImport = async () => {
     if (!source.trim()) return
-    if (!window.confirm('Importar substitui o diagrama atual. Componentes com o mesmo nome mantêm suas posições. Continuar?')) return
     setImporting(true)
     try {
       const diagram = await api.importMermaid(source)
-      toast('success', `Importado: ${diagram.nodes.length} componentes, ${diagram.edges.length} conexões`)
+      toast('success', `Importado: ${diagram.nodes.length} componentes, ${diagram.edges.length} conexões · Ctrl+Z desfaz`)
       onClose()
       setSource('')
     } catch (err) { toast('error', (err as Error).message) } finally { setImporting(false) }

@@ -1,11 +1,12 @@
 import { ReactFlowProvider } from '@xyflow/react'
 import {
-  AlertTriangle, BookOpen, Bot, CheckCircle2, Info, Moon, Network, PanelLeft, PanelRight, Play, Plug,
-  Presentation, Receipt, Sun, Terminal, Waypoints, Workflow, X,
+  AlertTriangle, BookOpen, Bot, CheckCircle2, ClipboardPaste, Copy, CopyPlus, Info, Moon, Network, PanelLeft,
+  PanelRight, Play, Plug, Presentation, Receipt, Redo2, Sun, Terminal, Trash2, Undo2, Waypoints, Workflow, X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { api } from './lib/api'
+import { useHistory } from './lib/history'
 import { relativeTime } from './lib/format'
 import { ProjectProvider, useProject } from './lib/project'
 import { tabKey, parseTabKey, VIEW_LABEL, type TabRef, type ViewId } from './lib/tabs'
@@ -15,6 +16,7 @@ import type { Estimate, ServerEvent, Snapshot, UMLDiagram, UMLKind } from './lib
 import { ELEMENT_LABEL, KIND_META } from './lib/umlMeta'
 import { ApiView } from './components/api/ApiView'
 import { ArchCanvas, type CanvasHandle } from './components/canvas/ArchCanvas'
+import type { CanvasCommands } from './components/canvas/CanvasMenu'
 import { Inspector } from './components/canvas/Inspector'
 import { MermaidPanel } from './components/canvas/MermaidPanel'
 import { DocsView } from './components/docs/DocsView'
@@ -26,6 +28,7 @@ import { Toolbox, type ToolboxContext } from './components/shell/Toolbox'
 import { TasksView } from './components/tasks/TasksView'
 import { Badge, Button, IconAction, Modal, Spinner, Tip, ToastProvider, useToast } from './components/ui'
 import { Button as UIButton } from './components/ui/button'
+import { ConfirmProvider, useConfirm } from './components/ui/confirm'
 import { ErrorBoundary } from './components/ui/error-boundary'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip'
 import { UmlCanvas, type UmlCanvasHandle } from './components/uml/UmlCanvas'
@@ -38,7 +41,9 @@ export default function App() {
     <ThemeProvider>
       <TooltipProvider>
         <ToastProvider>
-          <AppWithEvents />
+          <ConfirmProvider>
+            <AppWithEvents />
+          </ConfirmProvider>
         </ToastProvider>
       </TooltipProvider>
     </ThemeProvider>
@@ -125,7 +130,9 @@ function PanelHeader({ title, children }: { title: string; children?: ReactNode 
 function Shell() {
   const { snapshot, lint, loading, error, connected, highlight, lastEvent, refresh } = useProject()
   const toast = useToast()
+  const confirm = useConfirm()
   const theme = useTheme()
+  const history = useHistory(snapshot)
 
   const [tabKeys, setTabKeys] = useStored<string[]>('archcode-tabs', ['arch'])
   const [activeKey, setActiveKey] = useStored<string>('archcode-active-tab', 'arch')
@@ -136,7 +143,9 @@ function Shell() {
 
   const [tool, setTool] = useState<Tool>(SELECT_TOOL)
   const [selection, setSelection] = useState<Selection>(null)
-  const [focusName, setFocusName] = useState(false)
+  // Token (timestamp) que pede ao Editor para focar o campo Nome; 0 = não focar.
+  const [focusName, setFocusName] = useState(0)
+  const [multiCount, setMultiCount] = useState(0)
   const [executive, setExecutive] = useState(false)
   const [pitch, setPitch] = useState(false)
   const [zoom, setZoom] = useState(1)
@@ -202,13 +211,12 @@ function Shell() {
   }, [refresh, toast])
 
   const autoLayout = useCallback(async () => {
-    if (!window.confirm('Reorganizar reposiciona todos os componentes por camadas topológicas. Continuar?')) return
     try {
       await api.autoLayout()
-      toast('success', 'Layout reorganizado')
+      toast('success', 'Layout reorganizado', { label: 'Desfazer', onClick: () => void history.undo('arch') })
       setTimeout(() => archHandle?.fitAll(), 250)
     } catch (err) { toast('error', (err as Error).message) }
-  }, [archHandle, toast])
+  }, [archHandle, history, toast])
 
   const generateUseCases = useCallback(async () => {
     try {
@@ -220,43 +228,56 @@ function Shell() {
   }, [openTab, refresh, toast])
 
   const deleteDiagram = useCallback(async (d: UMLDiagram) => {
-    if (!window.confirm(`Excluir o diagrama "${d.name}"? Os arquivos .json e .mermaid serão removidos.`)) return
+    const ok = await confirm({
+      title: `Excluir o diagrama "${d.name}"?`,
+      description: 'Os arquivos .json e .mermaid do diagrama serão removidos do projeto. Esta ação não pode ser desfeita pelo Ctrl+Z.',
+      confirmLabel: 'Excluir diagrama', destructive: true,
+    })
+    if (!ok) return
     try {
       await api.deleteUML(d.id)
       closeTab(`uml:${d.id}`)
       toast('success', `Diagrama "${d.name}" excluído`)
     } catch (err) { toast('error', (err as Error).message) }
-  }, [closeTab, toast])
+  }, [closeTab, confirm, toast])
 
-  const deleteSelection = useCallback(async () => {
-    if (!selection) return
+  /* Edição: desfazer/refazer e comandos do canvas ativo -------------------------- */
+
+  // Chave de histórico e comandos do diagrama aberto (arquitetura ou UML).
+  const historyKey = active?.type === 'arch' ? 'arch' : activeDiagram ? `uml:${activeDiagram.id}` : null
+  const commands: CanvasCommands | null = active?.type === 'arch' ? archHandle : activeDiagram ? umlHandle : null
+
+  const undo = useCallback(async () => {
+    if (!historyKey) return
+    if (!history.canUndo(historyKey)) { toast('info', 'Nada para desfazer'); return }
+    try { await history.undo(historyKey) } catch (err) { toast('error', `Não foi possível desfazer: ${(err as Error).message}`) }
+  }, [history, historyKey, toast])
+
+  const redo = useCallback(async () => {
+    if (!historyKey) return
+    if (!history.canRedo(historyKey)) { toast('info', 'Nada para refazer'); return }
+    try { await history.redo(historyKey) } catch (err) { toast('error', `Não foi possível refazer: ${(err as Error).message}`) }
+  }, [history, historyKey, toast])
+
+  /** Executa um comando do canvas e anuncia o resultado; mudanças oferecem "Desfazer". */
+  const runCommand = useCallback(async (name: keyof Pick<CanvasCommands, 'deleteSelected' | 'copy' | 'cut' | 'paste' | 'duplicate'>) => {
+    if (!commands || !historyKey) return
+    const key = historyKey
     try {
-      if (selection.scope === 'uml') {
-        const d = diagrams.find((x) => x.id === selection.diagramId)
-        if (selection.kind === 'element') {
-          const el = d?.elements.find((e) => e.id === selection.id)
-          if (!window.confirm(`Excluir "${el?.name || (el ? ELEMENT_LABEL[el.type] : 'elemento')}" e suas relações?`)) return
-          await api.deleteUMLElement(selection.diagramId, selection.id)
-        } else {
-          await api.deleteUMLRelation(selection.diagramId, selection.id)
-        }
-      } else if (selection.kind === 'node') {
-        const n = snapshot?.diagram.nodes.find((x) => x.id === selection.id)
-        if (!window.confirm(`Excluir o componente "${n?.data.label ?? selection.id}" e suas conexões?`)) return
-        await api.deleteNode(selection.id)
-      } else {
-        await api.deleteEdge(selection.id)
-      }
-      setSelection(null)
+      const msg = await commands[name]()
+      if (!msg) return
+      if (name === 'copy') toast('info', msg)
+      else toast('success', msg, { label: 'Desfazer', onClick: () => void history.undo(key) })
+      if (name === 'deleteSelected' || name === 'cut') setSelection(null)
     } catch (err) { toast('error', (err as Error).message) }
-  }, [diagrams, selection, snapshot?.diagram.nodes, toast])
+  }, [commands, history, historyKey, toast])
 
   const selectUmlElement = useCallback((diagramId: string, elementId: string) => {
     openTab({ type: 'uml', id: diagramId })
     // Depois que a aba monta, seleciona e centraliza.
     setTimeout(() => {
       setSelection({ scope: 'uml', diagramId, kind: 'element', id: elementId })
-      setFocusName(false)
+      setFocusName(0)
     }, 0)
   }, [openTab])
 
@@ -270,7 +291,7 @@ function Shell() {
 
   // Centraliza no elemento selecionado a partir do Model Explorer.
   useEffect(() => {
-    if (selection?.scope === 'uml' && selection.kind === 'element' && umlHandle && !focusName) umlHandle.focus(selection.id)
+    if (selection?.scope === 'uml' && selection.kind === 'element' && umlHandle && focusName === 0) umlHandle.focus(selection.id)
   }, [selection, umlHandle, focusName])
 
   /* Atalhos de teclado ------------------------------------------------------- */
@@ -278,19 +299,34 @@ function Shell() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement
-      const typing = target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')
+      const historyKeyCombo = (e.ctrlKey || e.metaKey) && ['z', 'y'].includes(e.key.toLowerCase())
+      // Campo recém-focado e ainda não editado (ex.: nome do elemento criado) não
+      // "segura" o Ctrl+Z: o usuário espera desfazer a criação.
+      const pristine = historyKeyCombo && target.dataset.pristine === 'true'
+      const typing = !pristine && target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')
       if (e.key === 'Escape' && !typing) { setTool(SELECT_TOOL); return }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); setPanels({ ...panels, left: !panels.left }); return }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') { e.preventDefault(); setPanels({ ...panels, right: !panels.right }); return }
       if (typing) return
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selection) { e.preventDefault(); void deleteSelection(); return }
-      if (e.shiftKey && e.code === 'Digit1') { (activeDiagram ? umlHandle?.fitAll : archHandle?.fitAll)?.(); return }
-      if (activeDiagram && (e.key === '+' || e.key === '=')) umlHandle?.zoomIn()
-      if (activeDiagram && e.key === '-') umlHandle?.zoomOut()
+      const mod = e.ctrlKey || e.metaKey
+      const k = e.key.toLowerCase()
+      if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); void undo(); return }
+      if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); void redo(); return }
+      if (!commands) return
+      if (mod && k === 'c') { e.preventDefault(); void runCommand('copy'); return }
+      if (mod && k === 'x') { e.preventDefault(); void runCommand('cut'); return }
+      if (mod && k === 'v') { e.preventDefault(); void runCommand('paste'); return }
+      if (mod && k === 'd') { e.preventDefault(); void runCommand('duplicate'); return }
+      if (mod && k === 'a') { e.preventDefault(); commands.selectAll(); return }
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); void runCommand('deleteSelected'); return }
+      if (e.key === 'F2' && selection?.scope === 'uml' && selection.kind === 'element') { e.preventDefault(); setFocusName(Date.now()); return }
+      if (e.shiftKey && e.code === 'Digit1') { commands.fitAll(); return }
+      if (!mod && (e.key === '+' || e.key === '=')) commands.zoomIn()
+      if (!mod && e.key === '-') commands.zoomOut()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [activeDiagram, archHandle, deleteSelection, panels, selection, setPanels, umlHandle])
+  }, [commands, panels, redo, runCommand, selection, setPanels, undo])
 
   /* Estados de carregamento ---------------------------------------------------- */
 
@@ -315,7 +351,6 @@ function Shell() {
 
   const archActive = active?.type === 'arch'
   const toolboxContext: ToolboxContext = archActive ? { type: 'arch' } : activeDiagram ? { type: 'uml', kind: activeDiagram.kind } : null
-  const fit = archActive ? archHandle?.fitAll : activeDiagram ? umlHandle?.fitAll : undefined
 
   const actions: MenuActions = {
     newDiagram: (kind) => setNewDiagram(kind),
@@ -323,10 +358,17 @@ function Shell() {
     exportImage: activeDiagram && umlHandle ? (format) => void umlHandle.exportImage(format) : null,
     exportMermaid: activeDiagram ? () => setMermaidOf(activeDiagram) : archActive ? () => setArchMermaidOpen(true) : null,
     generatePRD: () => void generatePRD(),
-    deleteSelection: selection ? () => void deleteSelection() : null,
-    fit: fit ?? null,
-    zoomIn: activeDiagram ? umlHandle?.zoomIn ?? null : null,
-    zoomOut: activeDiagram ? umlHandle?.zoomOut ?? null : null,
+    undo: historyKey && history.canUndo(historyKey) ? () => void undo() : null,
+    redo: historyKey && history.canRedo(historyKey) ? () => void redo() : null,
+    cut: commands ? () => void runCommand('cut') : null,
+    copy: commands ? () => void runCommand('copy') : null,
+    paste: commands ? () => void runCommand('paste') : null,
+    duplicate: commands ? () => void runCommand('duplicate') : null,
+    selectAll: commands ? commands.selectAll : null,
+    deleteSelection: commands ? () => void runCommand('deleteSelected') : null,
+    fit: commands?.fitAll ?? null,
+    zoomIn: commands?.zoomIn ?? null,
+    zoomOut: commands?.zoomOut ?? null,
     autoLayout: () => { openTab({ type: 'arch' }); void autoLayout() },
     importMermaid: () => setArchMermaidOpen(true),
     validate: () => setLintOpen(true),
@@ -356,6 +398,9 @@ function Shell() {
         </div>
 
         <div className="ml-auto flex items-center gap-1">
+          <IconButton label="Desfazer (Ctrl+Z)" onClick={() => void undo()} disabled={!historyKey || !history.canUndo(historyKey)}><Undo2 /></IconButton>
+          <IconButton label="Refazer (Ctrl+Y)" onClick={() => void redo()} disabled={!historyKey || !history.canRedo(historyKey)}><Redo2 /></IconButton>
+          <div className="mx-1 h-4 w-px bg-border" />
           <IconButton label={panels.left ? 'Ocultar Toolbox (Ctrl+B)' : 'Mostrar Toolbox (Ctrl+B)'} active={panels.left}
             onClick={() => setPanels({ ...panels, left: !panels.left })}><PanelLeft /></IconButton>
           <IconButton label={panels.right ? 'Ocultar painéis (Ctrl+J)' : 'Mostrar painéis (Ctrl+J)'} active={panels.right}
@@ -400,6 +445,7 @@ function Shell() {
                 highlight={highlight}
                 selectedId={selection?.scope === 'arch' ? selection.id : null}
                 onSelect={(id, kind) => setSelection(id ? { scope: 'arch', kind, id } : null)}
+                onSelectionChange={(sel) => setMultiCount(sel.nodes.length + sel.edges.length)}
                 onReady={setArchHandle}
                 tool={tool}
                 onToolDone={() => setTool(SELECT_TOOL)}
@@ -413,8 +459,14 @@ function Shell() {
                 tool={tool}
                 onToolDone={() => setTool(SELECT_TOOL)}
                 selectedId={selection?.scope === 'uml' && selection.diagramId === activeDiagram.id ? selection.id : null}
-                onSelect={(sel) => { setFocusName(false); setSelection(sel ? { scope: 'uml', diagramId: activeDiagram.id, ...sel } : null) }}
-                onCreated={(id) => { setFocusName(true); setSelection({ scope: 'uml', diagramId: activeDiagram.id, kind: 'element', id }) }}
+                onSelect={(sel) => { setFocusName(0); setSelection(sel ? { scope: 'uml', diagramId: activeDiagram.id, ...sel } : null) }}
+                onSelectionChange={(sel) => setMultiCount(sel.elements.length + sel.relations.length)}
+                onCreated={(id) => { setFocusName(Date.now()); setSelection({ scope: 'uml', diagramId: activeDiagram.id, kind: 'element', id }) }}
+                onRename={(id) => {
+                  setSelection({ scope: 'uml', diagramId: activeDiagram.id, kind: 'element', id })
+                  setFocusName(Date.now())
+                  if (!panels.right) setPanels({ ...panels, right: true })
+                }}
                 onReady={setUmlHandle}
                 onZoom={setZoom}
                 highlight={highlight}
@@ -471,6 +523,8 @@ function Shell() {
                     diagram={activeDiagram}
                     selection={selection}
                     focusName={focusName}
+                    multiCount={multiCount}
+                    onCommand={(name) => void runCommand(name)}
                     onClose={() => setSelection(null)}
                     onFocusArch={(id) => selectArchNode(id)}
                     onOpenUseCase={(code) => { setDocsFocus({ tab: 'use-cases', code, at: Date.now() }); openTab({ type: 'view', view: 'docs' }) }}
@@ -530,14 +584,19 @@ function Shell() {
   )
 }
 
-function IconButton({ label, onClick, children, active }: { label: string; onClick: () => void; children: ReactNode; active?: boolean }) {
+function IconButton({ label, onClick, children, active, disabled }: {
+  label: string; onClick: () => void; children: ReactNode; active?: boolean; disabled?: boolean
+}) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <UIButton size="icon-sm" variant="ghost" onClick={onClick} aria-label={label}
+        {/* span: o tooltip continua funcionando com o botão desabilitado */}
+        <span className="inline-flex">
+        <UIButton size="icon-sm" variant="ghost" onClick={onClick} aria-label={label} disabled={disabled}
           className={cn(active && 'text-foreground')}>
           {children}
         </UIButton>
+        </span>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
@@ -594,13 +653,30 @@ function ViewIcon({ view }: { view: ViewId }) {
 /* Painel Editor (propriedades do que está selecionado) ------------------------------ */
 
 function EditorPanel({
-  snapshot, active, diagram, selection, focusName, onClose, onFocusArch, onOpenUseCase, onRename, onMermaid, onExport, archFocus,
+  snapshot, active, diagram, selection, focusName, multiCount, onCommand, onClose, onFocusArch, onOpenUseCase, onRename, onMermaid, onExport, archFocus,
 }: {
-  snapshot: Snapshot; active: TabRef | null; diagram: UMLDiagram | null; selection: Selection; focusName: boolean
+  snapshot: Snapshot; active: TabRef | null; diagram: UMLDiagram | null; selection: Selection; focusName: number
+  multiCount: number; onCommand: (name: 'deleteSelected' | 'copy' | 'duplicate' | 'cut' | 'paste') => void
   onClose: () => void; onFocusArch: (id: string) => void; onOpenUseCase: (code: string) => void
   onRename: (d: UMLDiagram) => void; onMermaid: (d: UMLDiagram) => void; onExport: (f: 'png' | 'svg') => void
   archFocus: (id: string) => void
 }) {
+  if (multiCount > 1 && (active?.type === 'arch' || diagram)) {
+    return (
+      <div className="space-y-3 p-3">
+        <p className="text-[13px] font-semibold">{multiCount} itens selecionados</p>
+        <p className="text-[12px] leading-relaxed text-muted-foreground">
+          Arraste para mover todos juntos. Use o clique direito para mais ações.
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          <Button size="sm" variant="secondary" icon={Copy} onClick={() => onCommand('copy')}>Copiar</Button>
+          <Button size="sm" variant="secondary" icon={CopyPlus} onClick={() => onCommand('duplicate')}>Duplicar</Button>
+          <Button size="sm" variant="secondary" icon={ClipboardPaste} onClick={() => onCommand('paste')}>Colar</Button>
+          <Button size="sm" variant="danger" icon={Trash2} onClick={() => onCommand('deleteSelected')}>Excluir</Button>
+        </div>
+      </div>
+    )
+  }
   if (active?.type === 'arch') {
     return (
       <Inspector snapshot={snapshot}
@@ -739,13 +815,21 @@ function McpModal({ open, onClose }: { open: boolean; onClose: () => void }) {
 
 function ShortcutsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const rows: [string, string][] = [
+    ['Ctrl + Z / Ctrl + Y', 'Desfazer / refazer (também Ctrl + Shift + Z)'],
+    ['Ctrl + C / X / V', 'Copiar, recortar e colar elementos (com as relações entre eles)'],
+    ['Ctrl + D', 'Duplicar a seleção'],
+    ['Ctrl + A', 'Selecionar tudo no diagrama'],
+    ['Del / Backspace', 'Excluir toda a seleção (desfazível)'],
+    ['F2 / duplo clique', 'Renomear o elemento selecionado'],
+    ['Clique direito', 'Menu de contexto: adicionar aqui, adicionar conectado, editar'],
+    ['Duplo clique no vazio', 'Adicionar um elemento na posição do cursor'],
+    ['Ctrl/Shift + clique', 'Adicionar ou remover da seleção'],
     ['Esc', 'Voltar à ferramenta Selecionar / cancelar relação'],
-    ['Del / Backspace', 'Excluir o elemento ou relação selecionado'],
     ['Shift + 1', 'Ajustar o diagrama à tela'],
     ['+ / −', 'Aproximar / afastar (diagramas UML)'],
     ['Ctrl + B', 'Mostrar/ocultar Toolbox'],
     ['Ctrl + J', 'Mostrar/ocultar Model Explorer e Editor'],
-    ['Arrastar no vazio', 'Selecionar vários elementos'],
+    ['Arrastar no vazio', 'Selecionar vários elementos com uma caixa'],
     ['Botão do meio / scroll', 'Mover o canvas'],
   ]
   return (

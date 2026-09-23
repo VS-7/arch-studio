@@ -23,7 +23,8 @@ interface Props {
   snapshot: Snapshot
   diagram: UMLDiagram
   selection: { kind: 'element' | 'relation'; id: string }
-  focusName?: boolean
+  /** Token para focar o campo Nome (muda a cada pedido; 0 = não focar). */
+  focusName?: number
   onClose: () => void
   onOpenUseCase?: (code: string) => void
   onFocusArch?: (nodeId: string) => void
@@ -76,7 +77,7 @@ function Section({ title, children, action }: { title: string; children: ReactNo
 
 /** Input que só grava ao confirmar (blur/Enter), evitando uma requisição por tecla. */
 function CommitInput({ value, onCommit, placeholder, autoFocus, mono, className }: {
-  value: string; onCommit: (v: string) => void; placeholder?: string; autoFocus?: boolean; mono?: boolean; className?: string
+  value: string; onCommit: (v: string) => void; placeholder?: string; autoFocus?: number; mono?: boolean; className?: string
 }) {
   const [draft, setDraft] = useState(value)
   const ref = useRef<HTMLInputElement>(null)
@@ -86,7 +87,8 @@ function CommitInput({ value, onCommit, placeholder, autoFocus, mono, className 
   }, [autoFocus])
   const commit = () => { if (draft !== value) onCommit(draft) }
   return (
-    <UIInput ref={ref} value={draft} placeholder={placeholder}
+    // data-pristine: sem edição pendente, Ctrl+Z/Y vão para o histórico do diagrama.
+    <UIInput ref={ref} value={draft} placeholder={placeholder} data-pristine={draft === value ? 'true' : undefined}
       className={cn('h-7 text-[12.5px]', mono && 'font-mono', className)}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
@@ -112,15 +114,19 @@ function CommitTextarea({ value, onCommit, placeholder, rows = 3 }: {
 /* Elemento --------------------------------------------------------------------- */
 
 function ElementEditor({ snapshot, diagram, el, focusName, onClose, onOpenUseCase, onFocusArch }: {
-  snapshot: Snapshot; diagram: UMLDiagram; el: UMLElement; focusName?: boolean; onClose: () => void
+  snapshot: Snapshot; diagram: UMLDiagram; el: UMLElement; focusName?: number; onClose: () => void
   onOpenUseCase?: (code: string) => void; onFocusArch?: (nodeId: string) => void
 }) {
   const toast = useToast()
   const patch = (p: Partial<UMLElement>) =>
     api.updateUMLElement(diagram.id, el.id, p).catch((err: unknown) => toast('error', (err as Error).message))
+  // Sem confirmação: a exclusão entra no histórico e o toast oferece desfazer (Ctrl+Z).
   const remove = async () => {
-    if (!window.confirm(`Excluir "${el.name || ELEMENT_LABEL[el.type]}" e suas relações?`)) return
-    try { await api.deleteUMLElement(diagram.id, el.id); onClose() } catch (err) { toast('error', (err as Error).message) }
+    try {
+      await api.deleteUMLElement(diagram.id, el.id)
+      onClose()
+      toast('success', `"${el.name || ELEMENT_LABEL[el.type]}" excluído · Ctrl+Z desfaz`)
+    } catch (err) { toast('error', (err as Error).message) }
   }
   const classifier = el.type === 'class' || el.type === 'interface'
   const parent = el.parent_id ? diagram.elements.find((e) => e.id === el.parent_id) : undefined

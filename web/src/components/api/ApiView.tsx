@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { Endpoint, Snapshot } from '../../lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, Select, Textarea, useToast } from '../ui'
+import { useConfirm } from '../ui/confirm'
 
 const METHOD_COLOR: Record<string, string> = {
   GET: '#10b981', POST: '#3b82f6', PUT: '#f59e0b',
@@ -17,6 +18,7 @@ const EMPTY: Endpoint = {
 
 export function ApiView({ snapshot }: { snapshot: Snapshot }) {
   const toast = useToast()
+  const confirm = useConfirm()
   const [editing, setEditing] = useState<Endpoint | null>(null)
   const [exporting, setExporting] = useState(false)
 
@@ -29,7 +31,7 @@ export function ApiView({ snapshot }: { snapshot: Snapshot }) {
   }
 
   const remove = async (id: string) => {
-    if (!window.confirm('Remover este contrato?')) return
+    if (!await confirm({ title: 'Remover este contrato de API?', description: 'A rota sai de api/endpoints.yaml.', confirmLabel: 'Remover', destructive: true })) return
     try {
       await api.deleteEndpoint(id)
       toast('success', 'Contrato removido')

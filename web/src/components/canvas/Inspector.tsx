@@ -115,10 +115,10 @@ function NodeInspector({ node, snapshot, onClose, onFocus }: {
   }
 
   const remove = async () => {
-    if (!window.confirm(`Remover "${node.data.label}" e todas as suas conexões?`)) return
+    // Sem confirmação: a remoção entra no histórico (Ctrl+Z desfaz).
     try {
       await api.deleteNode(node.id)
-      toast('success', 'Componente removido')
+      toast('success', `"${node.data.label}" removido · Ctrl+Z desfaz`)
       onClose()
     } catch (err) {
       toast('error', (err as Error).message)
@@ -311,10 +311,9 @@ function EdgeInspector({ edge, snapshot, onClose }: { edge: ArchEdge; snapshot: 
   }
 
   const remove = async () => {
-    if (!window.confirm('Remover esta conexão?')) return
     try {
       await api.deleteEdge(edge.id)
-      toast('success', 'Conexão removida')
+      toast('success', 'Conexão removida · Ctrl+Z desfaz')
       onClose()
     } catch (err) {
       toast('error', (err as Error).message)

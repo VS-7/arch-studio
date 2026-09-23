@@ -2,8 +2,9 @@
 // do StarUML. Cada item só dispara callbacks; o estado vive no Shell.
 
 import {
-  Bot, Code2, Download, FileImage, FilePlus2, Keyboard, Maximize, Monitor, Moon, Network, Plug,
-  Presentation, ShieldCheck, Sparkles, Sun, Trash2, Wand2, ZoomIn, ZoomOut,
+  Bot, ClipboardPaste, Code2, Copy, CopyPlus, Download, FileImage, FilePlus2, Keyboard, Maximize, Monitor, Moon,
+  Network, Plug, Presentation, Redo2, Scissors, ShieldCheck, Sparkles, SquareDashedMousePointer, Sun, Trash2,
+  Undo2, Wand2, ZoomIn, ZoomOut,
 } from 'lucide-react'
 import type { ThemePreference } from '../../lib/theme'
 import type { UMLKind } from '../../lib/types'
@@ -20,6 +21,13 @@ export interface MenuActions {
   exportImage: ((format: 'png' | 'svg') => void) | null
   exportMermaid: (() => void) | null
   generatePRD: () => void
+  undo: (() => void) | null
+  redo: (() => void) | null
+  cut: (() => void) | null
+  copy: (() => void) | null
+  paste: (() => void) | null
+  duplicate: (() => void) | null
+  selectAll: (() => void) | null
   deleteSelection: (() => void) | null
   fit: (() => void) | null
   zoomIn: (() => void) | null
@@ -78,6 +86,15 @@ export function AppMenubar({ actions, theme, onTheme, panels, onPanels, executiv
       <MenubarMenu>
         <MenubarTrigger>Editar</MenubarTrigger>
         <MenubarContent>
+          <MenubarItem disabled={!actions.undo} onSelect={() => actions.undo?.()}><Undo2 />Desfazer<MenubarShortcut>Ctrl+Z</MenubarShortcut></MenubarItem>
+          <MenubarItem disabled={!actions.redo} onSelect={() => actions.redo?.()}><Redo2 />Refazer<MenubarShortcut>Ctrl+Y</MenubarShortcut></MenubarItem>
+          <MenubarSeparator />
+          <MenubarItem disabled={!actions.cut} onSelect={() => actions.cut?.()}><Scissors />Recortar<MenubarShortcut>Ctrl+X</MenubarShortcut></MenubarItem>
+          <MenubarItem disabled={!actions.copy} onSelect={() => actions.copy?.()}><Copy />Copiar<MenubarShortcut>Ctrl+C</MenubarShortcut></MenubarItem>
+          <MenubarItem disabled={!actions.paste} onSelect={() => actions.paste?.()}><ClipboardPaste />Colar<MenubarShortcut>Ctrl+V</MenubarShortcut></MenubarItem>
+          <MenubarItem disabled={!actions.duplicate} onSelect={() => actions.duplicate?.()}><CopyPlus />Duplicar<MenubarShortcut>Ctrl+D</MenubarShortcut></MenubarItem>
+          <MenubarSeparator />
+          <MenubarItem disabled={!actions.selectAll} onSelect={() => actions.selectAll?.()}><SquareDashedMousePointer />Selecionar tudo<MenubarShortcut>Ctrl+A</MenubarShortcut></MenubarItem>
           <MenubarItem disabled={!actions.deleteSelection} onSelect={() => actions.deleteSelection?.()} variant="destructive">
             <Trash2 />Excluir seleção<MenubarShortcut>Del</MenubarShortcut>
           </MenubarItem>

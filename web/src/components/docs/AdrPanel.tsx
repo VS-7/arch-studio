@@ -6,6 +6,7 @@ import { api } from '../../lib/api'
 import { renderMarkdown } from '../../lib/markdown'
 import type { ADR, Snapshot } from '../../lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, Select, Textarea, useToast } from '../ui'
+import { useConfirm } from '../ui/confirm'
 
 const STATUS_COLOR: Record<string, string> = {
   Aceito: '#10b981', Proposto: '#f59e0b', Rejeitado: '#ef4444',
@@ -16,6 +17,7 @@ const EMPTY: ADR = { id: '', title: '', status: 'Proposto', context: '', decisio
 
 export function AdrPanel({ snapshot }: { snapshot: Snapshot }) {
   const toast = useToast()
+  const confirm = useConfirm()
   const [editing, setEditing] = useState<ADR | null>(null)
 
   const save = async (adr: ADR) => {
@@ -27,7 +29,7 @@ export function AdrPanel({ snapshot }: { snapshot: Snapshot }) {
   }
 
   const remove = async (id: string) => {
-    if (!window.confirm(`Remover ${id}?`)) return
+    if (!await confirm({ title: `Remover ${id}?`, description: 'O arquivo da decisão em docs/architecture-decisions/ será apagado.', confirmLabel: 'Remover', destructive: true })) return
     try {
       await api.deleteADR(id)
       toast('success', `${id} removido`)

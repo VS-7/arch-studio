@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { Snapshot, UseCase } from '../../lib/types'
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, Select, StringList, useToast } from '../ui'
+import { useConfirm } from '../ui/confirm'
 
 const EMPTY: UseCase = {
   code: '', name: '', actors: [], components: [], complexity: 'medium', estimated_hours: 16,
@@ -15,12 +16,13 @@ const EMPTY: UseCase = {
 
 export function UseCasesPanel({ snapshot, focusCode }: { snapshot: Snapshot; focusCode?: string }) {
   const toast = useToast()
+  const confirm = useConfirm()
   const [editing, setEditing] = useState<UseCase | null>(
     () => (focusCode ? snapshot.use_cases.find((uc) => uc.code === focusCode) ?? null : null),
   )
 
   const remove = async (code: string) => {
-    if (!window.confirm(`Remover o caso de uso ${code}?`)) return
+    if (!await confirm({ title: `Remover o caso de uso ${code}?`, description: 'O arquivo da ficha em docs/casos-de-uso/ será apagado.', confirmLabel: 'Remover', destructive: true })) return
     try {
       await api.deleteUseCase(code)
       toast('success', `${code} removido`)

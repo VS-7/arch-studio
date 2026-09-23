@@ -4,11 +4,30 @@
 // (claro/escuro). As arestas são "flutuantes" (UmlEdges.tsx): as alças aqui
 // servem apenas para iniciar conexões, não definem o ponto de ancoragem.
 
-import { Handle, NodeResizer, Position, type Node, type NodeProps } from '@xyflow/react'
-import { memo, type CSSProperties, type ReactNode } from 'react'
+import { Handle, NodeResizer, NodeToolbar, Position, type Node, type NodeProps } from '@xyflow/react'
+import { MoreHorizontal, Pencil } from 'lucide-react'
+import { createContext, memo, useContext, type CSSProperties, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { FIXED_SIZE_TYPES, SEQ } from '../../lib/umlMeta'
+import type { ConnectOption } from '../../lib/umlOps'
 import type { LifelineKind, UMLElement, UMLMember } from '../../lib/types'
+import { IconAction } from '../ui'
+import { ElementGlyph, RelationGlyph } from './UmlGlyph'
+
+/** Ações da barra rápida, fornecidas pelo UmlCanvas. */
+export interface UmlNodeActions {
+  /** Id do único elemento selecionado (a barra só aparece nele). */
+  single: string | null
+  options: (el: UMLElement) => ConnectOption[]
+  onQuick: (id: string, opt: ConnectOption) => void
+  onMore: (id: string, x: number, y: number) => void
+  onRename?: (id: string) => void
+}
+
+export const UmlActionsContext = createContext<UmlNodeActions | null>(null)
+
+/** Quantos atalhos aparecem direto na barra; o restante fica em "Mais…". */
+const QUICK_LIMIT = 5
 
 export interface UmlNodeData extends Record<string, unknown> {
   el: UMLElement
@@ -83,9 +102,44 @@ function UmlNodeImpl({ data, selected }: NodeProps<UmlFlowNode>) {
   return (
     <>
       <Resizer el={el} selected={!!selected} />
+      <QuickBar el={el} />
       <Shape data={data} className={ring} />
       <Handles lifeline={el.type === 'lifeline'} />
     </>
+  )
+}
+
+/**
+ * Barra flutuante sobre o elemento selecionado, como os atalhos do StarUML:
+ * cria, com um clique, um elemento já conectado (subclasse, caso incluído,
+ * próximo estado, mensagem…), sem voltar à Toolbox.
+ */
+function QuickBar({ el }: { el: UMLElement }) {
+  const actions = useContext(UmlActionsContext)
+  if (!actions || actions.single !== el.id) return null
+  const options = actions.options(el)
+  const shown = options.slice(0, QUICK_LIMIT)
+  return (
+    <NodeToolbar isVisible position={Position.Top} offset={10}
+      className="nodrag flex items-center gap-0.5 rounded-md border bg-popover p-0.5 text-popover-foreground shadow-md">
+      {shown.map((opt) => (
+        <IconAction key={opt.label} label={opt.label} side="top" className="size-7"
+          onClick={() => actions.onQuick(el.id, opt)}>
+          {/* Mesmo tipo do selecionado (ex.: classe → subclasse): o que diferencia é a relação. */}
+          {opt.element && opt.element !== el.type ? <ElementGlyph type={opt.element} /> : <RelationGlyph type={opt.relation} />}
+        </IconAction>
+      ))}
+      {shown.length > 0 && <span className="mx-0.5 h-4 w-px bg-border" />}
+      {actions.onRename && (
+        <IconAction label="Renomear (F2)" side="top" className="size-7" onClick={() => actions.onRename?.(el.id)}>
+          <Pencil size={14} />
+        </IconAction>
+      )}
+      <IconAction label={options.length > QUICK_LIMIT ? 'Mais ações…' : 'Ações…'} side="top" className="size-7"
+        onClick={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); actions.onMore(el.id, r.left, r.bottom + 4) }}>
+        <MoreHorizontal size={14} />
+      </IconAction>
+    </NodeToolbar>
   )
 }
 
