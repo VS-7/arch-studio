@@ -2,7 +2,7 @@
 // arquitetura, os diagramas UML e seus elementos, e os artefatos de apoio.
 
 import {
-  BookOpen, Box, ChevronRight, Code2, Copy, FileCode2, FolderClosed, FolderOpen, ListChecks,
+  BookOpen, Box, ChevronRight, Code2, Copy, FileCode2, FileText, FolderClosed, FolderOpen, ListChecks,
   Network, Pencil, Plus, Receipt, Search, Sparkles, Trash2, Waypoints, Workflow,
 } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
@@ -30,6 +30,8 @@ interface Props {
   onDeleteDiagram: (d: UMLDiagram) => void
   onShowMermaid: (d: UMLDiagram) => void
   onGenerateUseCases: () => void
+  /** Abre a Documentação numa aba específica (documento, requisitos, fichas, ADRs). */
+  onOpenDocs?: (tab: 'document' | 'requirements' | 'use-cases' | 'adrs') => void
 }
 
 export function ModelExplorer(props: Props) {
@@ -127,9 +129,10 @@ export function ModelExplorer(props: Props) {
               expandable open={open.has('support')} onToggle={() => toggle('support')} onClick={() => toggle('support')} />
             {open.has('support') && (
               <>
-                <SupportRow view="docs" icon={<BookOpen size={13} />} label="Requisitos" count={snapshot.requirements.requirements.length} {...props} activeKey={activeKey} />
-                <SupportRow view="docs" icon={<ListChecks size={13} />} label="Fichas de caso de uso" count={snapshot.use_cases.length} {...props} activeKey={activeKey} />
-                <SupportRow view="docs" icon={<FileCode2 size={13} />} label="Decisões (ADR)" count={snapshot.adrs.length} {...props} activeKey={activeKey} />
+                <SupportRow view="docs" docsTab="document" icon={<FileText size={13} />} label="Documento de Requisitos" {...props} activeKey={activeKey} />
+                <SupportRow view="docs" docsTab="requirements" icon={<BookOpen size={13} />} label="Requisitos" count={snapshot.requirements.requirements.length} {...props} activeKey={activeKey} />
+                <SupportRow view="docs" docsTab="use-cases" icon={<ListChecks size={13} />} label="Fichas de caso de uso" count={snapshot.use_cases.length} {...props} activeKey={activeKey} />
+                <SupportRow view="docs" docsTab="adrs" icon={<FileCode2 size={13} />} label="Decisões (ADR)" count={snapshot.adrs.length} {...props} activeKey={activeKey} />
                 <SupportRow view="api" icon={<Network size={13} />} label="Contratos de API" count={snapshot.endpoints.endpoints.length} {...props} activeKey={activeKey} />
                 <SupportRow view="pricing" icon={<Receipt size={13} />} label="Precificação" {...props} activeKey={activeKey} />
                 <SupportRow view="tasks" icon={<Workflow size={13} />} label="Implementação (AI-PRD)" count={snapshot.tasks.tasks.length || undefined} {...props} activeKey={activeKey} />
@@ -142,12 +145,14 @@ export function ModelExplorer(props: Props) {
   )
 }
 
-function SupportRow({ view, icon, label, count, onOpen, activeKey }: {
-  view: ViewId; icon: ReactNode; label: string; count?: number; onOpen: (tab: TabRef) => void; activeKey: string
+function SupportRow({ view, docsTab, icon, label, count, onOpen, onOpenDocs, activeKey }: {
+  view: ViewId; docsTab?: 'document' | 'requirements' | 'use-cases' | 'adrs'; icon: ReactNode; label: string; count?: number
+  onOpen: (tab: TabRef) => void; onOpenDocs?: Props['onOpenDocs']; activeKey: string
 }) {
   return (
     <Row depth={2} icon={<span className="text-muted-foreground">{icon}</span>} label={label} count={count}
-      active={activeKey === `view:${view}`} onClick={() => onOpen({ type: 'view', view })} />
+      active={activeKey === `view:${view}` && !docsTab}
+      onClick={() => (docsTab && onOpenDocs ? onOpenDocs(docsTab) : onOpen({ type: 'view', view }))} />
   )
 }
 

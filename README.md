@@ -96,6 +96,7 @@ meu-projeto/
 │   ├── manifest.yaml              # metadados do projeto e preferências
 │   ├── pricing.yaml               # valor/hora, horas base, catálogo de nuvem
 │   ├── tasks.json                 # espelho legível por máquina do ai-prd.md
+│   ├── document.yaml              # cliente, usuários, histórico e referências do documento de requisitos
 │   └── diagrams/
 │       ├── macro.json             # nós, arestas, posições — a fonte da verdade visual
 │       ├── macro.mermaid          # espelho Mermaid, regenerado a cada gravação
@@ -108,6 +109,8 @@ meu-projeto/
 │   ├── requisitos.md              # RFs e RNFs em formato estruturado e estável
 │   ├── ai-prd.md                  # blueprint de implementação para agentes de IA
 │   ├── proposta-comercial.md      # proposta gerada a partir do escopo visual
+│   ├── documento-de-requisitos.md # documento de requisitos formal, gerado
+│   ├── diagramas/                 # SVGs das figuras do documento de requisitos
 │   ├── casos-de-uso/              # um arquivo por caso de uso
 │   └── architecture-decisions/    # ADRs no formato Nygard
 └── api/
@@ -194,6 +197,30 @@ cada tipo, coerente com o caso de uso de autenticação.
 
 ---
 
+## Documento de requisitos
+
+O Studio gera o **Documento de Requisitos** formal do projeto — capa, histórico de alterações,
+sumário, introdução, descrição geral, requisitos funcionais, não funcionais agrupados por categoria
+(com o quadro de prioridade Essencial/Importante/Desejável), diagramas de casos de uso, detalhamento
+de cada CDU, modelagem UML, arquitetura, matriz de rastreabilidade e referências. Seções sem conteúdo
+são omitidas e a numeração de títulos e figuras se ajusta sozinha.
+
+Nada é digitado duas vezes: o documento é montado a partir de `docs/requisitos.md` (use
+`- **Categoria:**` e `- **Requisitos associados:**` nos RNFs), das fichas de `docs/casos-de-uso/`
+(descrição, `- **Requisitos:**`, pós-condições e subtítulos nos fluxos — um item `# Cadastro` agrupa
+passos sem interromper a numeração), dos diagramas UML, do diagrama macro, dos ADRs e dos contratos.
+Só o que não existe em outro lugar — cliente, usuários, histórico, referências e glossário — fica em
+`.arch/document.yaml`. As figuras são SVGs renderizados no servidor, idênticos ao canvas.
+
+| Onde | Como |
+| :--- | :--- |
+| **Interface** | Pré-visualização do documento, edição dos metadados e exportação em PDF, DOCX e Markdown. |
+| **CLI** | `archcode-studio export requirements [--out docs/documento-de-requisitos.md]` grava o Markdown e as figuras em `docs/diagramas/`. |
+| **MCP** | `update_document_metadata` preenche cliente, usuários e histórico; `generate_requirements_document` grava o documento e devolve um resumo. |
+| **HTTP** | `GET /api/reqdoc` (estruturado), `GET /api/reqdoc/markdown?embed=1` (arquivo único), `POST /api/reqdoc/save`, `GET /api/export/uml/<id>.svg`. |
+
+---
+
 ## Integração com agentes de IA (MCP)
 
 ```bash
@@ -244,6 +271,8 @@ http://127.0.0.1:8765/mcp/sse
 | `add_uml_relation` | Liga elementos por id ou nome: herança, composição, mensagem, transição… |
 | `remove_uml_item` | Remove um elemento (com suas relações) ou uma relação; mensagens são renumeradas. |
 | `generate_use_case_diagram` | Gera ou completa o diagrama de casos de uso a partir de `docs/casos-de-uso`. |
+| `update_document_metadata` | Atualiza (merge) cliente, usuários, histórico, referências e glossário do documento de requisitos. |
+| `generate_requirements_document` | Grava `docs/documento-de-requisitos.md` e as figuras; devolve o número de RF, RNF, CDU e figuras. |
 
 Dois prompts acompanham o servidor: `implement_next_task` e `model_new_feature`.
 
@@ -277,7 +306,7 @@ archcode-studio mcp         [--dir .]                  # servidor MCP em stdio
 archcode-studio prd         [--stack --granularity --no-tests]
 archcode-studio estimate    [--margin --json --detailed]
 archcode-studio validate    [--json --strict]          # sai com 1 se houver erros
-archcode-studio export      svg|mermaid|openapi|proposal [--mode --theme --out]
+archcode-studio export      svg|mermaid|openapi|proposal|requirements [--mode --theme --out]
 archcode-studio mcp-config
 ```
 

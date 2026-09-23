@@ -45,7 +45,11 @@ Regras:
  - NUNCA edite .arch/diagrams/macro.json nem os JSON UML diretamente: use as ferramentas.
    Elas preservam as coordenadas dos nós já posicionados pelo usuário.
  - Todo componente novo deve ser justificado por um requisito ou caso de uso.
- - Toda aresta HTTP deve declarar seus endpoints, que alimentam api/endpoints.yaml.`
+ - Toda aresta HTTP deve declarar seus endpoints, que alimentam api/endpoints.yaml.
+
+Documento de requisitos formal: preencha category/related nos RNFs, description,
+requirements e post_conditions nos casos de uso, registre cliente/usuários/histórico
+com update_document_metadata e gere com generate_requirements_document.`
 
 // Deps reúne o que o servidor MCP precisa para operar.
 type Deps struct {
@@ -65,6 +69,7 @@ func New(d Deps) *server.MCPServer {
 	)
 	registerTools(s, d.App)
 	registerUMLTools(s, d.App)
+	registerReqDocTools(s, d.App)
 	registerPrompts(s)
 	return s
 }
@@ -372,7 +377,7 @@ func registerTools(s *server.MCPServer, a *app.App) {
 
 	// --- 8. upsert_requirement -----------------------------------------------
 	s.AddTool(mcp.NewTool("upsert_requirement",
-		mcp.WithDescription("Cria ou atualiza um requisito funcional (RF) ou não funcional (RNF) em docs/requisitos.md."),
+		mcp.WithDescription("Cria ou atualiza um requisito funcional (RF) ou não funcional (RNF) em docs/requisitos.md. RNFs devem ter 'category' (agrupamento no documento de requisitos) e 'related' (requisitos associados)."),
 		mcp.WithTitleAnnotation("Registrar requisito"),
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithString("id", mcp.Description("Identificador, ex.: 'RF004'. Omitido, o próximo livre é gerado.")),
@@ -381,6 +386,8 @@ func registerTools(s *server.MCPServer, a *app.App) {
 		mcp.WithString("description", mcp.Description("Descrição completa, no formato 'O sistema deve…'.")),
 		mcp.WithString("priority", mcp.Description("Prioridade de negócio."), mcp.Enum("Alta", "Média", "Baixa")),
 		mcp.WithArray("components", mcp.Description("Ids dos componentes que realizam este requisito."), mcp.WithStringItems()),
+		mcp.WithString("category", mcp.Description("Categoria do RNF no documento de requisitos: Usabilidade, Confiabilidade, Desempenho, Segurança, Software, Suportabilidade, Portabilidade, Interface, Legal… (texto livre).")),
+		mcp.WithArray("related", mcp.Description("Requisitos associados (ids de RF/RNF), ex.: ['RF001','RF002']. Use ['Todos'] quando o RNF vale para todos."), mcp.WithStringItems()),
 	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		title, err := req.RequireString("title")
 		if err != nil {
@@ -393,6 +400,8 @@ func registerTools(s *server.MCPServer, a *app.App) {
 			Description: req.GetString("description", ""),
 			Priority:    req.GetString("priority", ""),
 			Components:  stringSlice(req, "components"),
+			Category:    req.GetString("category", ""),
+			Related:     stringSlice(req, "related"),
 		}, hub.SourceAI)
 		if err != nil {
 			return errResult(err)
@@ -406,17 +415,21 @@ func registerTools(s *server.MCPServer, a *app.App) {
 
 	// --- 9. upsert_use_case ---------------------------------------------------
 	s.AddTool(mcp.NewTool("upsert_use_case",
-		mcp.WithDescription("Cria ou atualiza a ficha estruturada de um caso de uso em docs/casos-de-uso/."),
+		mcp.WithDescription("Cria ou atualiza a ficha estruturada de um caso de uso em docs/casos-de-uso/. Nos fluxos (main_flow, alternate_flows, exceptions), um item que começa com '# ' é um subtítulo de grupo (ex.: '# Cadastro de paciente'), não um passo: a numeração dos passos continua através dele."),
 		mcp.WithTitleAnnotation("Registrar caso de uso"),
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithString("code", mcp.Description("Código, ex.: 'CDU003'. Omitido, o próximo livre é gerado.")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Nome do caso de uso, ex.: 'Processar Assinatura Recorrente'.")),
+		mcp.WithString("description", mcp.Description("Descrição do caso de uso: objetivo e resultado esperado, em um parágrafo.")),
 		mcp.WithArray("actors", mcp.Description("Atores envolvidos."), mcp.WithStringItems()),
+		mcp.WithArray("requirements", mcp.Description("Ids dos requisitos que o caso de uso realiza, ex.: ['RF001']."), mcp.WithStringItems()),
 		mcp.WithArray("components", mcp.Description("Ids dos componentes envolvidos."), mcp.WithStringItems()),
-		mcp.WithArray("pre_conditions", mcp.Description("Pré-condições."), mcp.WithStringItems()),
-		mcp.WithArray("main_flow", mcp.Description("Passos do fluxo principal, em ordem."), mcp.WithStringItems()),
-		mcp.WithArray("alternate_flows", mcp.Description("Fluxos alternativos."), mcp.WithStringItems()),
-		mcp.WithArray("exceptions", mcp.Description("Fluxos de exceção."), mcp.WithStringItems()),
+		mcp.WithString("priority", mcp.Description("Prioridade de negócio."), mcp.Enum("Alta", "Média", "Baixa")),
+		mcp.WithArray("pre_conditions", mcp.Description("Entradas e pré-condições."), mcp.WithStringItems()),
+		mcp.WithArray("post_conditions", mcp.Description("Saídas e pós-condições."), mcp.WithStringItems()),
+		mcp.WithArray("main_flow", mcp.Description("Passos do fluxo principal, em ordem. Itens '# Título' agrupam passos."), mcp.WithStringItems()),
+		mcp.WithArray("alternate_flows", mcp.Description("Fluxos alternativos. Itens '# Título' agrupam passos."), mcp.WithStringItems()),
+		mcp.WithArray("exceptions", mcp.Description("Fluxos de exceção. Itens '# Título' agrupam passos."), mcp.WithStringItems()),
 		mcp.WithArray("business_rules", mcp.Description("Regras de negócio aplicáveis."), mcp.WithStringItems()),
 		mcp.WithArray("acceptance", mcp.Description("Critérios de aceite no formato Given-When-Then."), mcp.WithStringItems()),
 		mcp.WithString("complexity", mcp.Description("Complexidade do caso de uso."), mcp.Enum("low", "medium", "high")),
@@ -429,9 +442,13 @@ func registerTools(s *server.MCPServer, a *app.App) {
 		uc := model.UseCase{
 			Code:           req.GetString("code", ""),
 			Name:           name,
+			Description:    req.GetString("description", ""),
 			Actors:         stringSlice(req, "actors"),
+			Requirements:   stringSlice(req, "requirements"),
 			Components:     stringSlice(req, "components"),
+			Priority:       req.GetString("priority", ""),
 			PreConditions:  stringSlice(req, "pre_conditions"),
+			PostConditions: stringSlice(req, "post_conditions"),
 			MainFlow:       stringSlice(req, "main_flow"),
 			AlternateFlows: stringSlice(req, "alternate_flows"),
 			Exceptions:     stringSlice(req, "exceptions"),

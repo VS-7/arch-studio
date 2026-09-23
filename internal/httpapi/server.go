@@ -89,6 +89,13 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/use-cases", s.upsertUseCase)
 	m.HandleFunc("DELETE /api/use-cases/{code}", s.deleteUseCase)
 
+	// Documento de requisitos
+	m.HandleFunc("GET /api/reqdoc", s.getReqDoc)
+	m.HandleFunc("GET /api/reqdoc/meta", s.getReqDocMeta)
+	m.HandleFunc("PUT /api/reqdoc/meta", s.putReqDocMeta)
+	m.HandleFunc("POST /api/reqdoc/save", s.saveReqDoc)
+	m.HandleFunc("GET /api/reqdoc/markdown", s.getReqDocMarkdown)
+
 	m.HandleFunc("GET /api/adrs", s.listADRs)
 	m.HandleFunc("POST /api/adrs", s.upsertADR)
 	m.HandleFunc("DELETE /api/adrs/{id}", s.deleteADR)
@@ -119,6 +126,7 @@ func (s *Server) routes() {
 
 	// Exportação
 	m.HandleFunc("GET /api/export/svg", s.exportSVG)
+	m.HandleFunc("GET /api/export/uml/{file}", s.exportUMLSVG)
 
 	// Tempo real
 	m.HandleFunc("/ws", s.hub.ServeWS)

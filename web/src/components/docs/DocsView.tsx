@@ -1,4 +1,4 @@
-import { BookOpen, Bot, FileSignature, GitBranch, ListChecks, RefreshCw } from 'lucide-react'
+import { BookOpen, Bot, FileSignature, FileText, GitBranch, ListChecks, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { Snapshot } from '../../lib/types'
@@ -8,10 +8,13 @@ import { AdrPanel } from './AdrPanel'
 import { MarkdownView } from './MarkdownView'
 import { RequirementsPanel } from './RequirementsPanel'
 import { UseCasesPanel } from './UseCasesPanel'
+import { DocumentPanel } from './reqdoc/DocumentPanel'
 
-type Tab = 'requirements' | 'use-cases' | 'adrs' | 'ai-prd' | 'proposal'
+export type DocsTab = 'document' | 'requirements' | 'use-cases' | 'adrs' | 'ai-prd' | 'proposal'
+type Tab = DocsTab
 
 const TABS: { id: Tab; label: string; icon: typeof BookOpen }[] = [
+  { id: 'document', label: 'Documento de Requisitos', icon: FileText },
   { id: 'requirements', label: 'Requisitos', icon: BookOpen },
   { id: 'use-cases', label: 'Casos de Uso', icon: ListChecks },
   { id: 'adrs', label: 'Decisões (ADR)', icon: GitBranch },
@@ -22,11 +25,11 @@ const TABS: { id: Tab; label: string; icon: typeof BookOpen }[] = [
 export function DocsView({ snapshot, onGeneratePRD, initialTab, focusUseCase }: {
   snapshot: Snapshot; onGeneratePRD: () => void; initialTab?: Tab; focusUseCase?: string
 }) {
-  const [tab, setTab] = useState<Tab>(initialTab ?? 'requirements')
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'document')
 
   return (
     <div className="h-full overflow-y-auto">
-    <div className="mx-auto w-full max-w-5xl px-5 py-5">
+    <div className="mx-auto w-full max-w-6xl px-5 py-5">
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="mb-4">
         <TabsList>
           {TABS.map(({ id, label, icon: Icon }) => (
@@ -35,6 +38,7 @@ export function DocsView({ snapshot, onGeneratePRD, initialTab, focusUseCase }: 
         </TabsList>
       </Tabs>
 
+      {tab === 'document' && <DocumentPanel snapshot={snapshot} />}
       {tab === 'requirements' && <RequirementsPanel snapshot={snapshot} />}
       {tab === 'use-cases' && <UseCasesPanel snapshot={snapshot} focusCode={focusUseCase} />}
       {tab === 'adrs' && <AdrPanel snapshot={snapshot} />}

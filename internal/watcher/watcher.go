@@ -189,6 +189,8 @@ func classify(rel string) string {
 		return hub.EventTasks
 	case rel == store.FileManifest:
 		return hub.EventManifest
+	case rel == store.FileDocument:
+		return hub.EventDocs
 	case strings.HasPrefix(rel, store.DirDocs+"/"):
 		return hub.EventDocs
 	case strings.HasPrefix(rel, store.DirDiagrams+"/"):

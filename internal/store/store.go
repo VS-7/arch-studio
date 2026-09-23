@@ -44,6 +44,9 @@ const (
 	FileAIPRD     = "docs/ai-prd.md"
 	FileEndpoints = "api/endpoints.yaml"
 	FileProposal  = "docs/proposta-comercial.md"
+	FileDocument  = ".arch/document.yaml"
+	FileReqDoc    = "docs/documento-de-requisitos.md"
+	DirDocImages  = "docs/diagramas"
 )
 
 var ErrNotAProject = errors.New("diretório não é um projeto ArchCode Studio (.arch/manifest.yaml ausente)")
@@ -380,6 +383,53 @@ func (s *Store) LoadRequirements() (*model.RequirementsDoc, error) {
 func (s *Store) SaveRequirements(doc *model.RequirementsDoc) error {
 	doc.Sort()
 	return s.WriteFile(FileRequisit, []byte(model.RenderRequirements(doc)))
+}
+
+// ---------------------------------------------------------------------------
+// Metadados do documento de requisitos
+// ---------------------------------------------------------------------------
+
+// LoadDocumentMeta lê .arch/document.yaml. Arquivo ausente equivale a um
+// documento só com os padrões (título, versão e autores do manifest).
+func (s *Store) LoadDocumentMeta() (*model.DocumentMeta, error) {
+	meta, err := s.LoadDocumentMetaRaw()
+	if err != nil {
+		return nil, err
+	}
+	manifest, _ := s.LoadManifest()
+	meta.Normalize(manifest)
+	return meta, nil
+}
+
+// LoadDocumentMetaRaw lê .arch/document.yaml sem aplicar os padrões do
+// manifest, para que um merge não congele no arquivo a versão e os autores
+// que hoje vêm do manifest.
+func (s *Store) LoadDocumentMetaRaw() (*model.DocumentMeta, error) {
+	meta := &model.DocumentMeta{}
+	data, err := s.ReadFile(FileDocument)
+	switch {
+	case err == nil:
+		if err := yaml.Unmarshal(data, meta); err != nil {
+			return nil, fmt.Errorf("%s inválido: %w", FileDocument, err)
+		}
+	case !os.IsNotExist(err):
+		return nil, err
+	}
+	meta.Normalize(nil)
+	return meta, nil
+}
+
+// SaveDocumentMeta grava os metadados como vieram (apenas normalizados, sem
+// os padrões do manifest): versão e autores vazios continuam dinâmicos.
+func (s *Store) SaveDocumentMeta(meta *model.DocumentMeta) error {
+	meta.Normalize(nil)
+	data, err := marshalYAML(meta)
+	if err != nil {
+		return err
+	}
+	header := "# Metadados do documento de requisitos (docs/documento-de-requisitos.md).\n" +
+		"# Só os textos que não existem em outro lugar do projeto; o resto é gerado.\n"
+	return s.WriteFile(FileDocument, append([]byte(header), data...))
 }
 
 // ---------------------------------------------------------------------------
@@ -728,6 +778,7 @@ type Snapshot struct {
 	Pricing      *model.PricingConfig   `json:"pricing"`
 	Tasks        *model.TaskBoard       `json:"tasks"`
 	UMLDiagrams  []model.UMLDiagram     `json:"uml_diagrams"`
+	Document     model.DocumentMeta     `json:"document"`
 	Mermaid      string                 `json:"mermaid"`
 	AIPRDExists  bool                   `json:"ai_prd_exists"`
 }
@@ -772,6 +823,10 @@ func (s *Store) Snapshot() (*Snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
+	document, err := s.LoadDocumentMeta()
+	if err != nil {
+		return nil, err
+	}
 	mermaid, _ := s.ReadFile(FileMacroMmd)
 	return &Snapshot{
 		Manifest:     manifest,
@@ -783,6 +838,7 @@ func (s *Store) Snapshot() (*Snapshot, error) {
 		Pricing:      pricing,
 		Tasks:        tasks,
 		UMLDiagrams:  umlDiagrams,
+		Document:     *document,
 		Mermaid:      string(mermaid),
 		AIPRDExists:  s.Exists(FileAIPRD),
 	}, nil

@@ -8,7 +8,7 @@
 //	prd         compila docs/ai-prd.md
 //	estimate    imprime a estimativa de esforço e custo
 //	validate    roda o linter de arquitetura
-//	export      exporta svg, mermaid, openapi ou proposta comercial
+//	export      exporta svg, mermaid, openapi, proposta comercial ou documento de requisitos
 //	mcp-config  imprime o trecho de configuração para clientes MCP
 //	version     mostra a versão
 package main
@@ -62,7 +62,7 @@ Comandos:
   prd           Compila docs/ai-prd.md com a ordem topológica de implementação
   estimate      Calcula esforço, custo e prazo do projeto
   validate      Executa o linter de regras arquiteturais
-  export        Exporta svg | mermaid | openapi | proposal
+  export        Exporta svg | mermaid | openapi | proposal | requirements
   mcp-config    Imprime a configuração pronta para clientes MCP
   version       Mostra a versão
 
@@ -71,6 +71,7 @@ Exemplos:
   archcode-studio serve --port 8765
   archcode-studio prd --stack "Go / React / PostgreSQL"
   archcode-studio export svg --mode executive --out arquitetura.svg
+  archcode-studio export requirements    # docs/documento-de-requisitos.md + figuras
 
 Use "archcode-studio <comando> -h" para ver as opções de cada comando.
 `
@@ -492,7 +493,7 @@ func cmdValidate(args []string) error {
 
 func cmdExport(args []string) error {
 	if len(args) == 0 {
-		return errors.New("informe o formato: svg | mermaid | openapi | proposal")
+		return errors.New("informe o formato: svg | mermaid | openapi | proposal | requirements")
 	}
 	format := args[0]
 	fs := flag.NewFlagSet("export", flag.ExitOnError)
@@ -551,8 +552,29 @@ func cmdExport(args []string) error {
 		fmt.Printf("✓ %s gerado — total: %s\n", res.FilePath, pricing.Money(res.Currency, res.TotalCost))
 		return nil
 
+	case "requirements", "requisitos", "reqdoc":
+		// --out é relativo à raiz do projeto (ou absoluto dentro dela), pois o
+		// Markdown referencia as figuras pela subpasta diagramas/ ao lado.
+		target := *out
+		if target != "" && filepath.IsAbs(target) {
+			rel, err := filepath.Rel(st.Root(), target)
+			if err != nil || strings.HasPrefix(rel, "..") {
+				return fmt.Errorf("--out precisa ficar dentro do projeto (%s)", st.Root())
+			}
+			target = filepath.ToSlash(rel)
+		}
+		res, err := application.GenerateRequirementsDocument(target, hub.SourceCLI)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("✓ %s gerado — %s\n", res.File, res.Summary())
+		for _, img := range res.Images {
+			fmt.Printf("  figura   %s\n", img)
+		}
+		return nil
+
 	default:
-		return fmt.Errorf("formato desconhecido: %q (use svg, mermaid, openapi ou proposal)", format)
+		return fmt.Errorf("formato desconhecido: %q (use svg, mermaid, openapi, proposal ou requirements)", format)
 	}
 }
 

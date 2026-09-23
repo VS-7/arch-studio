@@ -15,6 +15,7 @@ func TestClassifyDiagramasUML(t *testing.T) {
 		".arch/diagrams/sequence/legado.mermaid":   hub.EventDiagram,
 		".arch/diagrams/macro.json":                hub.EventDiagram,
 		"docs/requisitos.md":                       hub.EventDocs,
+		".arch/document.yaml":                      hub.EventDocs,
 	}
 	for rel, want := range cases {
 		if got := classify(rel); got != want {

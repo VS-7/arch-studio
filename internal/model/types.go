@@ -314,6 +314,12 @@ type Requirement struct {
 	Status      string   `json:"status,omitempty"`
 	Components  []string `json:"components,omitempty"`
 	Description string   `json:"description,omitempty"`
+	// Category agrupa os RNFs no documento de requisitos (Usabilidade,
+	// Desempenho, Segurança…). Texto livre.
+	Category string `json:"category,omitempty"`
+	// Related lista os "requisitos associados" (ids de RF/RNF). O valor
+	// especial ["Todos"] significa todos os requisitos.
+	Related []string `json:"related,omitempty"`
 }
 
 type RequirementsDoc struct {
@@ -382,22 +388,116 @@ func (r *RequirementsDoc) NextRequirementID(kind string) string {
 // Casos de Uso (docs/casos-de-uso/*.md)
 // ---------------------------------------------------------------------------
 
+// Nos fluxos (main_flow, alternate_flows, exceptions), um item que começa com
+// "# " é um subtítulo de grupo, não um passo: a numeração dos passos continua
+// através dele (ver IsFlowSubtitle).
 type UseCase struct {
 	Code           string   `json:"code"`
 	Name           string   `json:"name"`
 	File           string   `json:"file,omitempty"`
+	Description    string   `json:"description,omitempty"`
 	Actors         []string `json:"actors,omitempty"`
+	Requirements   []string `json:"requirements,omitempty"`
 	Components     []string `json:"components,omitempty"`
 	Complexity     string   `json:"complexity,omitempty"`
 	EstimatedHours float64  `json:"estimated_hours,omitempty"`
 	Priority       string   `json:"priority,omitempty"`
 	Status         string   `json:"status,omitempty"`
 	PreConditions  []string `json:"pre_conditions,omitempty"`
+	PostConditions []string `json:"post_conditions,omitempty"`
 	MainFlow       []string `json:"main_flow,omitempty"`
 	AlternateFlows []string `json:"alternate_flows,omitempty"`
 	Exceptions     []string `json:"exceptions,omitempty"`
 	BusinessRules  []string `json:"business_rules,omitempty"`
 	Acceptance     []string `json:"acceptance,omitempty"`
+}
+
+// FlowSubtitlePrefix marca um subtítulo de grupo dentro de um fluxo.
+const FlowSubtitlePrefix = "# "
+
+// IsFlowSubtitle informa se o item de fluxo é um subtítulo ("# Cadastro") e
+// devolve o texto sem o marcador nem os dois-pontos finais.
+func IsFlowSubtitle(item string) (string, bool) {
+	item = strings.TrimSpace(item)
+	if !strings.HasPrefix(item, FlowSubtitlePrefix) {
+		return "", false
+	}
+	text := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(item[len(FlowSubtitlePrefix):]), ":"))
+	return text, text != ""
+}
+
+// ---------------------------------------------------------------------------
+// Metadados do documento de requisitos (.arch/document.yaml)
+// ---------------------------------------------------------------------------
+
+// DocRevision é uma linha do "Histórico de Alterações".
+type DocRevision struct {
+	Date        string `yaml:"date" json:"date"`
+	Version     string `yaml:"version" json:"version"`
+	Description string `yaml:"description" json:"description"`
+	Author      string `yaml:"author" json:"author"`
+}
+
+// GlossaryTerm é uma linha da tabela de convenções, termos e abreviações.
+type GlossaryTerm struct {
+	Term       string `yaml:"term" json:"term"`
+	Definition string `yaml:"definition" json:"definition"`
+}
+
+// DocumentMeta guarda apenas os textos do documento de requisitos que não
+// existem em nenhum outro arquivo do projeto (cliente, usuários, histórico,
+// referências, glossário). Todo o resto é derivado dos dados do projeto.
+type DocumentMeta struct {
+	Title        string         `yaml:"title" json:"title"`
+	Version      string         `yaml:"version" json:"version"`
+	Date         string         `yaml:"date" json:"date"` // ISO; vazio = data da geração
+	Authors      []string       `yaml:"authors" json:"authors"`
+	Client       string         `yaml:"client" json:"client"`
+	Users        string         `yaml:"users" json:"users"`
+	Introduction string         `yaml:"introduction" json:"introduction"`
+	History      []DocRevision  `yaml:"history" json:"history"`
+	References   []string       `yaml:"references" json:"references"`
+	Glossary     []GlossaryTerm `yaml:"glossary" json:"glossary"`
+}
+
+// DefaultDocumentTitle é o título usado quando document.yaml não define um.
+const DefaultDocumentTitle = "Documento de Requisitos"
+
+// Normalize preenche os padrões (título, versão e autores do manifest) e
+// garante listas nunca nulas, para que a UI não precise tratar null.
+func (m *DocumentMeta) Normalize(manifest *Manifest) {
+	m.Title = strings.TrimSpace(m.Title)
+	if m.Title == "" {
+		m.Title = DefaultDocumentTitle
+	}
+	m.Version = strings.TrimSpace(m.Version)
+	if m.Version == "" && manifest != nil {
+		m.Version = manifest.Version
+	}
+	m.Date = strings.TrimSpace(m.Date)
+	authors := []string{}
+	for _, a := range m.Authors {
+		if a = strings.TrimSpace(a); a != "" {
+			authors = append(authors, a)
+		}
+	}
+	if len(authors) == 0 && manifest != nil {
+		for _, a := range manifest.Authors {
+			if n := strings.TrimSpace(a.Name); n != "" {
+				authors = append(authors, n)
+			}
+		}
+	}
+	m.Authors = authors
+	if m.History == nil {
+		m.History = []DocRevision{}
+	}
+	if m.References == nil {
+		m.References = []string{}
+	}
+	if m.Glossary == nil {
+		m.Glossary = []GlossaryTerm{}
+	}
 }
 
 // ---------------------------------------------------------------------------

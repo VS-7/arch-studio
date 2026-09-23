@@ -11,7 +11,8 @@ import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { Requirement, Snapshot } from '../../lib/types'
 import { renderMarkdown } from '../../lib/markdown'
-import { Badge, Button, Card, Field, Input, Modal, Select, Textarea, useToast } from '../ui'
+import { PRIORITIES, RNF_CATEGORIES } from '../../lib/requirements'
+import { Badge, Button, Card, ChipPicker, Field, Input, Modal, Select, Textarea, useToast } from '../ui'
 import { useConfirm } from '../ui/confirm'
 
 const PRIORITY_COLOR: Record<string, string> = { Alta: '#f43f5e', Média: '#f59e0b', Baixa: '#64748b' }
@@ -163,14 +164,6 @@ function RequirementModal({ requirement, snapshot, onClose, onSave }: {
   useEffect(() => { if (requirement) setForm(requirement) }, [requirement])
   if (!requirement) return null
 
-  const toggleComponent = (id: string) => {
-    const components = form.components ?? []
-    setForm({
-      ...form,
-      components: components.includes(id) ? components.filter((c) => c !== id) : [...components, id],
-    })
-  }
-
   return (
     <Modal open onClose={onClose}
       title={form.id ? `Editar ${form.id}` : 'Novo requisito'}
@@ -192,7 +185,7 @@ function RequirementModal({ requirement, snapshot, onClose, onSave }: {
           </Field>
           <Field label="Prioridade">
             <Select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-              <option>Alta</option><option>Média</option><option>Baixa</option>
+              {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
             </Select>
           </Field>
         </div>
@@ -205,22 +198,26 @@ function RequirementModal({ requirement, snapshot, onClose, onSave }: {
             placeholder="O sistema deve processar webhooks do Stripe com idempotência."
             onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </Field>
+        {form.type === 'RNF' && (
+          <Field label="Categoria" hint="Agrupa os não funcionais no Documento de Requisitos (4.1 Usabilidade, 4.2 Desempenho…).">
+            <Input list="rnf-categories" value={form.category ?? ''} placeholder="Usabilidade"
+              onChange={(e) => setForm({ ...form, category: e.target.value })} />
+            <datalist id="rnf-categories">
+              {[...new Set([...RNF_CATEGORIES, ...snapshot.requirements.requirements.map((r) => r.category).filter(Boolean) as string[]])]
+                .map((c) => <option key={c} value={c} />)}
+            </datalist>
+          </Field>
+        )}
+        <Field label="Requisitos associados" hint="Aparecem no Documento de Requisitos e na matriz de rastreabilidade.">
+          <ChipPicker all="Todos" value={form.related ?? []} onChange={(related) => setForm({ ...form, related })}
+            options={snapshot.requirements.requirements.filter((r) => r.id !== form.id)
+              .map((r) => ({ value: r.id, label: r.id, title: r.title }))}
+            empty="Nenhum outro requisito cadastrado." />
+        </Field>
         <Field label="Componentes responsáveis">
-          <div className="flex flex-wrap gap-1.5 rounded-lg border border-app p-2">
-            {snapshot.diagram.nodes.filter((n) => n.type !== 'group').map((n) => {
-              const active = (form.components ?? []).includes(n.id)
-              return (
-                <button key={n.id} onClick={() => toggleComponent(n.id)}
-                  className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                    active ? 'border-primary bg-primary/15 text-primary' : 'border-app text-muted-app hover:surface-3'}`}>
-                  {n.data.label}
-                </button>
-              )
-            })}
-            {snapshot.diagram.nodes.length === 0 && (
-              <span className="text-[11px] text-muted-app">Nenhum componente no diagrama ainda.</span>
-            )}
-          </div>
+          <ChipPicker value={form.components ?? []} onChange={(components) => setForm({ ...form, components })}
+            options={snapshot.diagram.nodes.filter((n) => n.type !== 'group').map((n) => ({ value: n.id, label: n.data.label }))}
+            empty="Nenhum componente no diagrama ainda." />
         </Field>
       </div>
     </Modal>

@@ -19,7 +19,7 @@ import { ArchCanvas, type CanvasHandle } from './components/canvas/ArchCanvas'
 import type { CanvasCommands } from './components/canvas/CanvasMenu'
 import { Inspector } from './components/canvas/Inspector'
 import { MermaidPanel } from './components/canvas/MermaidPanel'
-import { DocsView } from './components/docs/DocsView'
+import { DocsView, type DocsTab } from './components/docs/DocsView'
 import { PitchMode } from './components/pitch/PitchMode'
 import { PricingView } from './components/pricing/PricingView'
 import { AppMenubar, type MenuActions } from './components/shell/AppMenubar'
@@ -149,7 +149,7 @@ function Shell() {
   const [executive, setExecutive] = useState(false)
   const [pitch, setPitch] = useState(false)
   const [zoom, setZoom] = useState(1)
-  const [docsFocus, setDocsFocus] = useState<{ tab: 'use-cases'; code: string; at: number } | null>(null)
+  const [docsFocus, setDocsFocus] = useState<{ tab: DocsTab; code?: string; at: number } | null>(null)
 
   const [archMermaidOpen, setArchMermaidOpen] = useState(false)
   const [lintOpen, setLintOpen] = useState(false)
@@ -506,6 +506,7 @@ function Shell() {
                     onDeleteDiagram={(d) => void deleteDiagram(d)}
                     onShowMermaid={setMermaidOf}
                     onGenerateUseCases={() => void generateUseCases()}
+                    onOpenDocs={(tab) => { setDocsFocus({ tab, at: Date.now() }); openTab({ type: 'view', view: 'docs' }) }}
                   />
                 </div>
               </div>

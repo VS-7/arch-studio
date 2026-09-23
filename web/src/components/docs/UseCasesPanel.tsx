@@ -5,11 +5,13 @@ import { ListChecks, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { Snapshot, UseCase } from '../../lib/types'
-import { Badge, Button, Card, EmptyState, Field, Input, Modal, Select, StringList, useToast } from '../ui'
+import { PRIORITIES } from '../../lib/requirements'
+import { Badge, Button, Card, ChipPicker, EmptyState, Field, Input, Modal, Select, StringList, Textarea, useToast } from '../ui'
 import { useConfirm } from '../ui/confirm'
 
 const EMPTY: UseCase = {
-  code: '', name: '', actors: [], components: [], complexity: 'medium', estimated_hours: 16,
+  code: '', name: '', description: '', requirements: [], post_conditions: [],
+  actors: [], components: [], complexity: 'medium', estimated_hours: 16,
   priority: 'Média', status: 'pending', pre_conditions: [], main_flow: [], alternate_flows: [],
   exceptions: [], business_rules: [], acceptance: [],
 }
@@ -91,11 +93,6 @@ function UseCaseModal({ useCase, snapshot, onClose, onSave }: {
 
   const set = <K extends keyof UseCase>(key: K, value: UseCase[K]) => setForm((f) => ({ ...f, [key]: value }))
 
-  const toggleComponent = (id: string) => {
-    const list = form.components ?? []
-    set('components', list.includes(id) ? list.filter((c) => c !== id) : [...list, id])
-  }
-
   return (
     <Modal open onClose={onClose} wide
       title={form.code ? `Editar ${form.code}` : 'Novo caso de uso'}
@@ -114,6 +111,12 @@ function UseCaseModal({ useCase, snapshot, onClose, onSave }: {
           </Field>
         </div>
 
+        <Field label="Descrição do caso de uso">
+          <Textarea rows={2} value={form.description ?? ''}
+            placeholder="Permitir que o usuário … de forma organizada e acessível."
+            onChange={(e) => set('description', e.target.value)} />
+        </Field>
+
         <div className="grid grid-cols-3 gap-2.5">
           <Field label="Complexidade">
             <Select value={form.complexity} onChange={(e) => set('complexity', e.target.value as UseCase['complexity'])}>
@@ -126,7 +129,7 @@ function UseCaseModal({ useCase, snapshot, onClose, onSave }: {
           </Field>
           <Field label="Prioridade">
             <Select value={form.priority} onChange={(e) => set('priority', e.target.value)}>
-              <option>Alta</option><option>Média</option><option>Baixa</option>
+              {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
             </Select>
           </Field>
         </div>
@@ -136,26 +139,31 @@ function UseCaseModal({ useCase, snapshot, onClose, onSave }: {
             onChange={(e) => set('actors', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))} />
         </Field>
 
-        <Field label="Componentes envolvidos">
-          <div className="flex flex-wrap gap-1.5 rounded-lg border border-app p-2">
-            {snapshot.diagram.nodes.filter((n) => n.type !== 'group').map((n) => {
-              const active = (form.components ?? []).includes(n.id)
-              return (
-                <button key={n.id} onClick={() => toggleComponent(n.id)}
-                  className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                    active ? 'border-success bg-success/15 text-success' : 'border-app text-muted-app hover:surface-3'}`}>
-                  {n.data.label}
-                </button>
-              )
-            })}
-          </div>
+        <Field label="Requisitos associados" hint="Liga a ficha aos requisitos no Documento de Requisitos e na rastreabilidade.">
+          <ChipPicker value={form.requirements ?? []} onChange={(v) => set('requirements', v)}
+            options={snapshot.requirements.requirements.map((r) => ({ value: r.id, label: r.id, title: r.title }))}
+            empty="Nenhum requisito cadastrado." />
         </Field>
 
+        <Field label="Componentes envolvidos">
+          <ChipPicker value={form.components ?? []} onChange={(v) => set('components', v)}
+            options={snapshot.diagram.nodes.filter((n) => n.type !== 'group').map((n) => ({ value: n.id, label: n.data.label }))}
+            empty="Nenhum componente no diagrama ainda." />
+        </Field>
+
+        <p className="rounded-md bg-muted px-3 py-2 text-[11.5px] text-muted-foreground">
+          Nos fluxos, um item que começa com <code className="font-mono">#</code> vira subtítulo
+          (ex.: <code className="font-mono"># Cadastro de paciente</code>) e a numeração dos passos continua — como no documento.
+        </p>
+
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Pré-condições">
+          <Field label="Entradas e pré-condições">
             <StringList value={form.pre_conditions ?? []} onChange={(v) => set('pre_conditions', v)} placeholder="Cliente cadastrado" />
           </Field>
-          <Field label="Fluxo principal">
+          <Field label="Saídas e pós-condições">
+            <StringList value={form.post_conditions ?? []} onChange={(v) => set('post_conditions', v)} placeholder="O pagamento é registrado" />
+          </Field>
+          <Field label="Fluxo de eventos principal">
             <StringList ordered value={form.main_flow ?? []} onChange={(v) => set('main_flow', v)} placeholder="Recebe webhook" />
           </Field>
           <Field label="Fluxos alternativos">

@@ -147,6 +147,10 @@ func ParseRequirements(src string) *RequirementsDoc {
 				if t := strings.ToUpper(val); t == "RF" || t == "RNF" {
 					cur.Type = t
 				}
+			case "categoria", "category":
+				cur.Category = val
+			case "requisitos associados", "related":
+				cur.Related = splitCSV(val)
 			default:
 				curBody = append(curBody, line)
 			}
@@ -196,7 +200,16 @@ func RenderRequirements(doc *RequirementsDoc) string {
 			}
 			fmt.Fprintf(&b, "- **Prioridade:** %s\n", priority)
 			fmt.Fprintf(&b, "- **Status:** %s\n", status)
-			fmt.Fprintf(&b, "- **Componentes:** %s\n\n", joinCSV(r.Components))
+			fmt.Fprintf(&b, "- **Componentes:** %s\n", joinCSV(r.Components))
+			// Bullets opcionais só aparecem quando preenchidos, para que arquivos
+			// antigos não mudem de forma ao serem regravados.
+			if c := strings.TrimSpace(r.Category); c != "" {
+				fmt.Fprintf(&b, "- **Categoria:** %s\n", c)
+			}
+			if len(r.Related) > 0 {
+				fmt.Fprintf(&b, "- **Requisitos associados:** %s\n", strings.Join(r.Related, ", "))
+			}
+			b.WriteString("\n")
 			if d := strings.TrimSpace(r.Description); d != "" {
 				b.WriteString(d)
 				b.WriteString("\n\n")
@@ -228,6 +241,7 @@ func ParseUseCase(src string) *UseCase {
 
 	section := ""
 	inPreamble := true
+	var description []string
 
 	appendTo := func(target *[]string, item string) {
 		item = strings.TrimSpace(item)
@@ -275,35 +289,66 @@ func ParseUseCase(src string) *UseCase {
 					uc.Priority = val
 				case "status":
 					uc.Status = NormalizeStatus(val)
+				case "requisitos", "requisitos associados", "requirements":
+					uc.Requirements = splitCSV(val)
 				}
 			}
 			continue
 		}
 
+		// A descrição é um parágrafo livre: as linhas são preservadas como estão.
+		if section == "descricao" || section == "description" {
+			description = append(description, line)
+			continue
+		}
+
 		item := line
+		isListItem := false
 		if m := reListItem.FindStringSubmatch(line); m != nil {
-			item = m[1]
+			item, isListItem = m[1], true
 		} else if strings.TrimSpace(line) == "" {
 			continue
 		}
 
+		// Nos fluxos, uma linha inteira em negrito fora da lista é um subtítulo
+		// de grupo ("**Cadastro de paciente:**" → "# Cadastro de paciente").
+		flow := func(target *[]string) {
+			if !isListItem {
+				if m := reBoldLine.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
+					if text := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(m[1]), ":")); text != "" {
+						*target = append(*target, FlowSubtitlePrefix+text)
+						return
+					}
+				}
+			}
+			appendTo(target, item)
+		}
+
 		switch {
+		case strings.Contains(section, "pos-condi"), strings.Contains(section, "pos condi"),
+			strings.Contains(section, "poscondi"), strings.Contains(section, "saidas"), strings.Contains(section, "post-cond"),
+			strings.Contains(section, "postcond"), strings.Contains(section, "post cond"):
+			appendTo(&uc.PostConditions, item)
 		case strings.Contains(section, "pre-condi"), strings.Contains(section, "pre condi"), strings.Contains(section, "precondi"):
 			appendTo(&uc.PreConditions, item)
 		case strings.Contains(section, "fluxo principal"), strings.Contains(section, "main flow"):
-			appendTo(&uc.MainFlow, item)
+			flow(&uc.MainFlow)
 		case strings.Contains(section, "fluxos alternativos"), strings.Contains(section, "alternate"):
-			appendTo(&uc.AlternateFlows, item)
+			flow(&uc.AlternateFlows)
 		case strings.Contains(section, "excec"), strings.Contains(section, "exception"):
-			appendTo(&uc.Exceptions, item)
+			flow(&uc.Exceptions)
 		case strings.Contains(section, "regras"), strings.Contains(section, "business rules"):
 			appendTo(&uc.BusinessRules, item)
 		case strings.Contains(section, "aceite"), strings.Contains(section, "acceptance"):
 			appendTo(&uc.Acceptance, item)
 		}
 	}
+	uc.Description = strings.TrimSpace(strings.Join(description, "\n"))
 	return uc
 }
+
+// reBoldLine casa uma linha inteira em negrito, com ou sem dois-pontos finais.
+var reBoldLine = regexp.MustCompile(`^\*\*([^*]+)\*\*:?$`)
 
 func RenderUseCase(uc *UseCase) string {
 	var b strings.Builder
@@ -326,18 +371,49 @@ func RenderUseCase(uc *UseCase) string {
 	fmt.Fprintf(&b, "- **Complexidade:** %s\n", complexity)
 	fmt.Fprintf(&b, "- **Horas Estimadas:** %s\n", trimFloat(uc.EstimatedHours))
 	fmt.Fprintf(&b, "- **Prioridade:** %s\n", priority)
-	fmt.Fprintf(&b, "- **Status:** %s\n\n", status)
+	fmt.Fprintf(&b, "- **Status:** %s\n", status)
+	if len(uc.Requirements) > 0 {
+		fmt.Fprintf(&b, "- **Requisitos:** %s\n", strings.Join(uc.Requirements, ", "))
+	}
+	b.WriteString("\n")
 
+	if d := strings.TrimSpace(uc.Description); d != "" {
+		fmt.Fprintf(&b, "## Descrição\n\n%s\n\n", d)
+	}
+
+	// writeFlow escreve os itens de um fluxo. Subtítulos ("# X") viram uma linha
+	// em negrito fora da lista, cercada de linhas em branco para não virar
+	// continuação do item anterior; a numeração dos passos continua através deles.
+	writeFlow := func(items []string, ordered bool) {
+		step, inList := 0, false
+		for _, it := range items {
+			if text, ok := IsFlowSubtitle(it); ok {
+				if inList {
+					b.WriteString("\n")
+				}
+				fmt.Fprintf(&b, "**%s**\n\n", text)
+				inList = false
+				continue
+			}
+			step++
+			if ordered {
+				fmt.Fprintf(&b, "%d. %s\n", step, stripLeadingIndex(it))
+			} else {
+				fmt.Fprintf(&b, "- %s\n", it)
+			}
+			inList = true
+		}
+		if inList {
+			b.WriteString("\n")
+		}
+	}
 	numbered := func(title string, items []string) {
 		fmt.Fprintf(&b, "## %s\n\n", title)
 		if len(items) == 0 {
 			b.WriteString("1. _A definir._\n\n")
 			return
 		}
-		for i, it := range items {
-			fmt.Fprintf(&b, "%d. %s\n", i+1, stripLeadingIndex(it))
-		}
-		b.WriteString("\n")
+		writeFlow(items, true)
 	}
 	bulleted := func(title string, items []string, empty string) {
 		fmt.Fprintf(&b, "## %s\n\n", title)
@@ -350,11 +426,22 @@ func RenderUseCase(uc *UseCase) string {
 		}
 		b.WriteString("\n")
 	}
+	flowSection := func(title string, items []string, empty string) {
+		fmt.Fprintf(&b, "## %s\n\n", title)
+		if len(items) == 0 {
+			fmt.Fprintf(&b, "- _%s_\n\n", empty)
+			return
+		}
+		writeFlow(items, false)
+	}
 
 	bulleted("Pré-condições", uc.PreConditions, "Nenhuma")
+	if len(uc.PostConditions) > 0 {
+		bulleted("Pós-condições", uc.PostConditions, "Nenhuma")
+	}
 	numbered("Fluxo Principal", uc.MainFlow)
-	bulleted("Fluxos Alternativos", uc.AlternateFlows, "Nenhum")
-	bulleted("Exceções", uc.Exceptions, "Nenhuma")
+	flowSection("Fluxos Alternativos", uc.AlternateFlows, "Nenhum")
+	flowSection("Exceções", uc.Exceptions, "Nenhuma")
 	bulleted("Regras de Negócio", uc.BusinessRules, "Nenhuma")
 	bulleted("Critérios de Aceite", uc.Acceptance, "A definir (formato Given-When-Then)")
 	return b.String()

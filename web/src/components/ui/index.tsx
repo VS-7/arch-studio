@@ -293,6 +293,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 /* Lista editável de strings (fluxos, pré-condições, critérios…)               */
 /* -------------------------------------------------------------------------- */
 
+/** Número do passo ignorando subtítulos ("# …"), como no Documento de Requisitos. */
+function stepNumber(items: string[], index: number): number {
+  return items.slice(0, index + 1).filter((it) => !it.trimStart().startsWith('#')).length
+}
+
 export function StringList({ value, onChange, placeholder, ordered }: {
   value: string[]; onChange: (next: string[]) => void; placeholder?: string; ordered?: boolean
 }) {
@@ -307,7 +312,7 @@ export function StringList({ value, onChange, placeholder, ordered }: {
       {items.map((item, index) => (
         <div key={index} className="flex items-center gap-2">
           <span className="w-5 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
-            {ordered ? `${index + 1}.` : '•'}
+            {item.trimStart().startsWith('#') ? '§' : ordered ? `${stepNumber(items, index)}.` : '•'}
           </span>
           <Input
             value={item}
@@ -329,6 +334,43 @@ export function StringList({ value, onChange, placeholder, ordered }: {
         </div>
       ))}
       <Button variant="ghost" size="sm" onClick={() => onChange([...items, ''])}>+ adicionar</Button>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Seleção múltipla em chips (componentes, requisitos associados…)             */
+/* -------------------------------------------------------------------------- */
+
+export function ChipPicker({ options, value, onChange, empty, all }: {
+  options: { value: string; label: string; title?: string }[]
+  value: string[]
+  onChange: (next: string[]) => void
+  empty?: string
+  /** Rótulo de uma opção exclusiva "todos" (ex.: "Todos"): marca/desmarca tudo de uma vez. */
+  all?: string
+}) {
+  const isAll = !!all && value.length === 1 && value[0] === all
+  const toggle = (v: string) => {
+    const base = isAll ? [] : value
+    onChange(base.includes(v) ? base.filter((x) => x !== v) : [...base, v])
+  }
+  const chip = (active: boolean) => cn(
+    'rounded-full border px-2.5 py-0.5 text-[11.5px] font-medium transition-colors',
+    active ? 'border-foreground/60 bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted',
+  )
+  return (
+    <div className="flex flex-wrap gap-1.5 rounded-md border p-2">
+      {all && (
+        <button type="button" className={chip(isAll)} onClick={() => onChange(isAll ? [] : [all])}>{all}</button>
+      )}
+      {options.map((o) => (
+        <button key={o.value} type="button" title={o.title} className={cn(chip(!isAll && value.includes(o.value)), isAll && 'opacity-50')}
+          onClick={() => toggle(o.value)}>
+          {o.label}
+        </button>
+      ))}
+      {options.length === 0 && <span className="text-[11px] text-muted-foreground">{empty ?? 'Nada para selecionar.'}</span>}
     </div>
   )
 }

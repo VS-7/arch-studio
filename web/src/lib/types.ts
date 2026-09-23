@@ -97,6 +97,10 @@ export interface Requirement {
   status?: TaskStatus
   components?: string[]
   description?: string
+  /** Agrupamento dos RNFs no documento (Usabilidade, Desempenho…). */
+  category?: string
+  /** "Requisitos associados"; ["Todos"] = todos. */
+  related?: string[]
 }
 
 export interface RequirementsDoc {
@@ -109,6 +113,10 @@ export interface UseCase {
   code: string
   name: string
   file?: string
+  description?: string
+  /** Requisitos associados (RF/RNF). */
+  requirements?: string[]
+  post_conditions?: string[]
   actors?: string[]
   components?: string[]
   complexity?: Complexity
@@ -328,6 +336,49 @@ export interface UMLDiagram {
   file?: string
 }
 
+// ---------------------------------------------------------------------------
+// Documento de Requisitos (.arch/document.yaml + gerador internal/reqdoc)
+// ---------------------------------------------------------------------------
+
+export interface DocRevision { date: string; version: string; description: string; author: string }
+export interface GlossaryTerm { term: string; definition: string }
+
+export interface DocumentMeta {
+  title: string
+  version: string
+  date: string
+  authors: string[]
+  client: string
+  users: string
+  introduction: string
+  history: DocRevision[]
+  references: string[]
+  glossary: GlossaryTerm[]
+}
+
+export type PriorityLevel = 'essencial' | 'importante' | 'desejavel'
+
+export type DocBlock =
+  | { type: 'heading'; level: 1 | 2 | 3 | 4; number?: string; text: string; id: string }
+  | { type: 'paragraph'; text: string }
+  | { type: 'list'; ordered: boolean; start?: number; items: string[] }
+  | { type: 'table'; header: string[]; rows: string[][] }
+  | { type: 'priority'; value: PriorityLevel }
+  | { type: 'image'; src: string; caption: string; diagram: string }
+  | { type: 'pagebreak' }
+
+export interface ReqDocument {
+  title: string
+  project: string
+  version: string
+  date: string
+  authors: string[]
+  history: DocRevision[]
+  toc: { id: string; number: string; title: string; level: number }[]
+  blocks: DocBlock[]
+  markdown: string
+}
+
 export interface Snapshot {
   manifest: Manifest
   diagram: Diagram
@@ -340,6 +391,7 @@ export interface Snapshot {
   mermaid: string
   ai_prd_exists: boolean
   uml_diagrams: UMLDiagram[]
+  document?: DocumentMeta
 }
 
 export interface Finding {

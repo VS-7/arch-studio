@@ -178,3 +178,153 @@ func TestPlaceholdersNaoViramDados(t *testing.T) {
 		t.Errorf("fluxo principal deveria ficar vazio, got %v", empty.MainFlow)
 	}
 }
+
+// Categoria e requisitos associados alimentam o documento de requisitos e
+// precisam sobreviver à ida e volta pelo Markdown.
+func TestRequirementsRoundTripComCategoriaERelacionados(t *testing.T) {
+	original := &RequirementsDoc{
+		ProjectName: "Clínica",
+		Overview:    "Visão geral.",
+		Requirements: []Requirement{
+			{ID: "RF001", Type: "RF", Title: "Login", Priority: "Alta", Status: StatusPending},
+			{ID: "RNF001", Type: "RNF", Title: "Interface amigável", Priority: "Média", Status: StatusPending,
+				Category: "Usabilidade", Related: []string{"Todos"}, Description: "Fácil de usar."},
+			{ID: "RNF002", Type: "RNF", Title: "MySQL", Priority: "Alta", Status: StatusPending,
+				Category: "Software", Related: []string{"RF001", "RF002"}},
+		},
+	}
+	first := RenderRequirements(original)
+	if !strings.Contains(first, "- **Categoria:** Usabilidade\n") ||
+		!strings.Contains(first, "- **Requisitos associados:** RF001, RF002\n") {
+		t.Fatalf("bullets novos ausentes:\n%s", first)
+	}
+	parsed := ParseRequirements(first)
+	if parsed.Requirements[1].Category != "Usabilidade" || strings.Join(parsed.Requirements[1].Related, ",") != "Todos" {
+		t.Errorf("RNF001: %+v", parsed.Requirements[1])
+	}
+	if strings.Join(parsed.Requirements[2].Related, ",") != "RF001,RF002" {
+		t.Errorf("RNF002: %+v", parsed.Requirements[2])
+	}
+	if parsed.Requirements[1].Description != "Fácil de usar." {
+		t.Errorf("descrição contaminada pelos bullets: %q", parsed.Requirements[1].Description)
+	}
+	if second := RenderRequirements(parsed); second != first {
+		t.Errorf("renderização não é idempotente:\n%s\n---\n%s", first, second)
+	}
+
+	// Sem os campos novos, nenhum bullet extra aparece.
+	plain := RenderRequirements(&RequirementsDoc{Requirements: []Requirement{{ID: "RF001", Type: "RF", Title: "X"}}})
+	if strings.Contains(plain, "Categoria") || strings.Contains(plain, "Requisitos associados") {
+		t.Errorf("bullets opcionais não deveriam aparecer:\n%s", plain)
+	}
+}
+
+func TestUseCaseRoundTripComSubtitulosECamposNovos(t *testing.T) {
+	original := &UseCase{
+		Code: "CDU011", Name: "Gerenciar Pacientes",
+		Description:    "Permite cadastrar, editar e excluir pacientes.\n\nSegundo parágrafo.",
+		Actors:         []string{"Recepcionista"},
+		Requirements:   []string{"RF010", "RF011"},
+		Priority:       "Alta",
+		PreConditions:  []string{"Usuário autenticado"},
+		PostConditions: []string{"Paciente gravado", "Tabela atualizada"},
+		MainFlow: []string{
+			"# Acesso à funcionalidade",
+			"Acessa o menu", "Sistema lista pacientes",
+			"# Cadastro de paciente",
+			"Escolhe Adicionar", "Preenche o formulário",
+		},
+		AlternateFlows: []string{"# Erro de validação", "Sistema exibe erro"},
+		Exceptions:     []string{"Falha no banco", "# Falha de exclusão", "Sistema impede a exclusão"},
+	}
+	first := RenderUseCase(original)
+
+	for _, want := range []string{
+		"- **Requisitos:** RF010, RF011\n",
+		"## Descrição\n\nPermite cadastrar, editar e excluir pacientes.\n\nSegundo parágrafo.\n\n",
+		"## Pós-condições\n\n- Paciente gravado\n- Tabela atualizada\n",
+		// A numeração continua através do subtítulo.
+		"**Acesso à funcionalidade**\n\n1. Acessa o menu\n2. Sistema lista pacientes\n\n**Cadastro de paciente**\n\n3. Escolhe Adicionar\n",
+		"- Falha no banco\n\n**Falha de exclusão**\n\n- Sistema impede a exclusão\n",
+	} {
+		if !strings.Contains(first, want) {
+			t.Errorf("markdown sem %q:\n%s", want, first)
+		}
+	}
+
+	parsed := ParseUseCase(first)
+	for name, pair := range map[string][2][]string{
+		"requisitos":   {parsed.Requirements, original.Requirements},
+		"pós":          {parsed.PostConditions, original.PostConditions},
+		"fluxo":        {parsed.MainFlow, original.MainFlow},
+		"alternativos": {parsed.AlternateFlows, original.AlternateFlows},
+		"exceções":     {parsed.Exceptions, original.Exceptions},
+		"pré":          {parsed.PreConditions, original.PreConditions},
+	} {
+		if strings.Join(pair[0], "|") != strings.Join(pair[1], "|") {
+			t.Errorf("%s: got %v, want %v", name, pair[0], pair[1])
+		}
+	}
+	if parsed.Description != original.Description {
+		t.Errorf("descrição: got %q", parsed.Description)
+	}
+	if second := RenderUseCase(parsed); second != first {
+		t.Errorf("renderização não é idempotente:\n%s\n---\n%s", first, second)
+	}
+}
+
+// Fichas escritas à mão no estilo do documento de referência ("**Texto:**"
+// fora da lista, seção "Saídas e pós-condição") também são entendidas.
+func TestParseUseCaseSubtituloComDoisPontos(t *testing.T) {
+	src := `# CDU002 — Realizar Login
+
+- **Atores:** Usuário
+
+## Saídas e pós-condição
+
+- Sessão ativa
+
+## Fluxo Principal
+
+**Acesso:**
+
+1. Abre a tela
+2. Informa credenciais
+
+**Validação:**
+
+3. Sistema valida
+`
+	uc := ParseUseCase(src)
+	want := "# Acesso|Abre a tela|Informa credenciais|# Validação|Sistema valida"
+	if got := strings.Join(uc.MainFlow, "|"); got != want {
+		t.Errorf("fluxo: got %q, want %q", got, want)
+	}
+	if len(uc.PostConditions) != 1 || uc.PostConditions[0] != "Sessão ativa" {
+		t.Errorf("pós-condições: %v", uc.PostConditions)
+	}
+}
+
+// Um arquivo antigo, sem os campos novos, é regravado exatamente igual.
+func TestUseCaseAntigoNaoMudaDeForma(t *testing.T) {
+	old := RenderUseCase(&UseCase{Code: "CDU001", Name: "Antigo", MainFlow: []string{"a", "b"}})
+	for _, unwanted := range []string{"Descrição", "Pós-condições", "Requisitos:"} {
+		if strings.Contains(old, unwanted) {
+			t.Errorf("seção opcional %q não deveria aparecer:\n%s", unwanted, old)
+		}
+	}
+	if again := RenderUseCase(ParseUseCase(old)); again != old {
+		t.Errorf("arquivo antigo mudou ao ser regravado:\n%s\n---\n%s", old, again)
+	}
+}
+
+func TestDocumentMetaNormalize(t *testing.T) {
+	m := DocumentMeta{Authors: []string{"  "}}
+	m.Normalize(&Manifest{Version: "2.0.0", Authors: []Author{{Name: "Ana"}}})
+	if m.Title != DefaultDocumentTitle || m.Version != "2.0.0" || strings.Join(m.Authors, ",") != "Ana" {
+		t.Errorf("padrões: %+v", m)
+	}
+	if m.History == nil || m.References == nil || m.Glossary == nil {
+		t.Error("listas nunca podem ser nulas")
+	}
+}

@@ -3,7 +3,7 @@
 import { transport } from './transport'
 import type {
   ADR, ArchEdge, ArchNode, Diagram, Endpoint, EndpointsSpec, Estimate,
-  LintReport, PricingConfig, Requirement, RequirementsDoc, Snapshot, Task, UMLDiagram, UMLElement,
+  DocumentMeta, LintReport, PricingConfig, ReqDocument, Requirement, RequirementsDoc, Snapshot, Task, UMLDiagram, UMLElement,
   UMLKind, UMLRelation, UseCase,
 } from './types'
 
@@ -106,6 +106,15 @@ export const api = {
     request<UMLRelation>('PATCH', `/api/uml/${encodeURIComponent(diagramId)}/relations/${encodeURIComponent(id)}`, patch),
   deleteUMLRelation: (diagramId: string, id: string) =>
     request<{ deleted: boolean }>('DELETE', `/api/uml/${encodeURIComponent(diagramId)}/relations/${encodeURIComponent(id)}`),
+
+  // Documento de Requisitos
+  reqDocument: () => request<ReqDocument>('GET', '/api/reqdoc'),
+  getDocumentMeta: () => request<DocumentMeta>('GET', '/api/reqdoc/meta'),
+  saveDocumentMeta: (meta: DocumentMeta) => request<DocumentMeta>('PUT', '/api/reqdoc/meta', meta),
+  saveReqDocument: () => request<{ file: string; images: string[] }>('POST', '/api/reqdoc/save', {}),
+  reqDocumentMarkdownUrl: (embed = true) => transport.resourceUrl(`/api/reqdoc/markdown${embed ? '?embed=1' : ''}`),
+  umlSvgUrl: (id: string, dark = false) =>
+    transport.resourceUrl(`/api/export/uml/${encodeURIComponent(id)}.svg${dark ? '?theme=dark' : ''}`),
 
   // Documentação
   getRequirements: () => request<{ doc: RequirementsDoc; raw: string }>('GET', '/api/requirements'),

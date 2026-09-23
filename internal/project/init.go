@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/archcode/studio/internal/mermaid"
 	"github.com/archcode/studio/internal/model"
@@ -163,6 +164,17 @@ Este texto é lido pelos agentes de IA como contexto de produto antes de qualque
 		adr := starterADR()
 		if _, err := st.SaveADR(adr); err == nil {
 			res.Created = append(res.Created, adr.File)
+		}
+
+		// Metadados do documento de requisitos (textos que não existem em
+		// nenhum outro arquivo do projeto).
+		if !st.Exists(store.FileDocument) {
+			if err := st.SaveDocumentMeta(starterDocumentMeta(opts.Author)); err != nil {
+				return nil, err
+			}
+			res.Created = append(res.Created, store.FileDocument)
+		} else {
+			res.Skipped = append(res.Skipped, store.FileDocument)
 		}
 
 		// Diagramas UML de exemplo, um de cada tipo.
@@ -327,11 +339,13 @@ func starterRequirements() []model.Requirement {
 			ID: "RNF001", Type: "RNF", Title: "Toda rota privada exige token JWT válido", Priority: "Alta",
 			Status: model.StatusPending, Components: []string{"node-api-gateway", "node-core-api"},
 			Description: "Requisições sem token ou com token expirado devem retornar HTTP 401 sem vazar detalhes internos.",
+			Category:    "Segurança", Related: []string{"RF002"},
 		},
 		{
 			ID: "RNF002", Type: "RNF", Title: "Tempo de resposta P95 abaixo de 300ms", Priority: "Média",
 			Status: model.StatusPending, Components: []string{"node-core-api", "node-redis"},
 			Description: "Endpoints de leitura devem responder em menos de 300ms no percentil 95 sob carga nominal.",
+			Category:    "Desempenho", Related: []string{"Todos"},
 		},
 	}
 }
@@ -339,9 +353,15 @@ func starterRequirements() []model.Requirement {
 func starterUseCase() *model.UseCase {
 	return &model.UseCase{
 		Code: "CDU001", Name: "Autenticar Usuário",
-		Actors: []string{"Usuário final"}, Components: []string{"node-web-app", "node-core-api", "node-postgres"},
-		Complexity: "medium", EstimatedHours: 16, Priority: "Alta", Status: model.StatusPending,
+		Description: "Permite que o usuário acesse o sistema informando e-mail e senha válidos, recebendo um token de sessão.",
+		Actors:      []string{"Usuário final"}, Components: []string{"node-web-app", "node-core-api", "node-postgres"},
+		Requirements: []string{"RF001"},
+		Complexity:   "medium", EstimatedHours: 16, Priority: "Alta", Status: model.StatusPending,
 		PreConditions: []string{"Usuário previamente cadastrado", "Conta ativa e não bloqueada"},
+		PostConditions: []string{
+			"Em caso de sucesso, o usuário recebe um JWT válido por 1 hora e é redirecionado ao painel.",
+			"Em caso de falha, nenhuma sessão é criada e a tentativa é registrada.",
+		},
 		MainFlow: []string{
 			"O usuário informa e-mail e senha na tela de login",
 			"A interface envia POST /api/v1/auth/login para a API",
@@ -458,6 +478,33 @@ func starterUMLDiagrams(projectName string, uc *model.UseCase) []*model.UMLDiagr
 	}
 
 	return []*model.UMLDiagram{useCases, class, seq, state}
+}
+
+// starterDocumentMeta traz o exemplo de .arch/document.yaml, coerente com o
+// caso de autenticação. Versão e autores ficam vazios: vêm do manifest.
+func starterDocumentMeta(author string) *model.DocumentMeta {
+	if strings.TrimSpace(author) == "" {
+		author = "Equipe do projeto"
+	}
+	return &model.DocumentMeta{
+		Title: model.DefaultDocumentTitle,
+		Client: "O cliente do sistema é uma empresa que precisa oferecer aos seus clientes finais um acesso " +
+			"seguro e centralizado aos serviços digitais, com autenticação única, controle de sessões e " +
+			"proteção contra acessos indevidos. (Exemplo: edite em .arch/document.yaml.)",
+		Users: "Os usuários finais acessam o sistema pela interface web, autenticando-se com e-mail e senha " +
+			"para consultar e manter seus próprios dados.",
+		History: []model.DocRevision{{
+			Date: time.Now().Format("2006-01-02"), Version: "0.1",
+			Description: "Draft inicial do documento.", Author: author,
+		}},
+		References: []string{
+			"IEEE Std 830-1998 — IEEE Recommended Practice for Software Requirements Specifications.",
+		},
+		Glossary: []model.GlossaryTerm{
+			{Term: "CDU", Definition: "Caso de uso."},
+			{Term: "JWT", Definition: "JSON Web Token, credencial assinada usada para autenticar as requisições."},
+		},
+	}
 }
 
 func starterADR() *model.ADR {
