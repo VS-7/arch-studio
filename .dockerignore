@@ -1,0 +1,13 @@
+.git
+.github
+/archcode-studio
+/dist
+web/node_modules
+web/.vite
+web/tsconfig.app.tsbuildinfo
+internal/webui/dist/*
+!internal/webui/dist/.gitkeep
+coverage.out
+*.test
+*.tmp
+.archcode-*

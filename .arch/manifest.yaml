@@ -1,0 +1,10 @@
+schema_version: 1.0.0
+project_name: archcode-studio
+description: Arquitetura gerenciada pelo ArchCode Studio
+version: 0.1.0
+authors: []
+settings:
+  diagram_engine: react-flow
+  sync_mermaid: true
+  auto_layout_on_import: false
+  pricing_currency: BRL

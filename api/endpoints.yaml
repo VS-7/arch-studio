@@ -1,0 +1,35 @@
+# Contratos de API derivados das arestas do diagrama macro.
+# Gerado e mantido pelo ArchCode Studio — edições manuais são preservadas.
+version: 1.0.0
+base_url: /api/v1
+endpoints:
+  - id: post-api-v1-auth-login
+    method: POST
+    path: /api/v1/auth/login
+    summary: Autentica o usuário e devolve um JWT
+    source: node-api-gateway
+    target: node-core-api
+    edge_id: edge-api-gateway-to-core-api
+    auth: none
+    request: '{"email": string, "password": string}'
+    response: '{"token": string, "expires_in": number}'
+    status_codes:
+      - 200
+      - 401
+      - 422
+    use_cases:
+      - CDU001
+  - id: get-api-v1-me
+    method: GET
+    path: /api/v1/me
+    summary: Retorna o perfil do usuário autenticado
+    source: node-api-gateway
+    target: node-core-api
+    edge_id: edge-api-gateway-to-core-api
+    auth: bearer
+    response: '{"id": string, "email": string, "roles": string[]}'
+    status_codes:
+      - 200
+      - 401
+    use_cases:
+      - CDU001

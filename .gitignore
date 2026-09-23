@@ -1,0 +1,19 @@
+# Binários
+/archcode-studio
+/dist/
+*.exe
+*.test
+
+# Frontend
+web/node_modules/
+web/.vite/
+
+# Bundle embutido: gerado por `make build`, não versionado.
+internal/webui/dist/*
+!internal/webui/dist/.gitkeep
+
+# Ferramentas
+.DS_Store
+coverage.out
+*.tmp
+.archcode-*

@@ -1,0 +1,323 @@
+# ArchCode Studio
+
+**Arquitetura de software como código — local-first, versionável em Git e nativa para agentes de IA.**
+
+Projete, documente, valide, precifique e implemente arquiteturas de software com sincronização
+bidirecional em tempo real entre **humanos** (canvas drag-and-drop) e **agentes de IA**
+(Model Context Protocol). Um único binário, sem banco de dados, sem nuvem, sem lock-in.
+
+```
+┌─ Humano ──────────────┐   ┌─ Go Core Engine ────────┐   ┌─ .arch/ + docs/ + api/ ──┐
+│ Canvas React Flow     │◄─►│ HTTP + WebSocket        │◄─►│ macro.json               │
+│ Editor de requisitos  │   │ File Watcher (fsnotify) │   │ requisitos.md            │
+│ Modo Pitch            │   │ Compilador de AI-PRD    │   │ casos-de-uso/            │
+│ Painel de preços      │   │ Motor de precificação   │   │ endpoints.yaml           │
+└───────────────────────┘   │ Linter de arquitetura   │   │ ai-prd.md                │
+                            │ Servidor MCP            │   │ tasks.json               │
+┌─ Agente de IA ────────┐   └─────────────────────────┘   └──────────────────────────┘
+│ Claude Code / Cursor  │◄─────────► stdio · SSE                  ▲
+│ Antigravity / CrewAI  │                                    Git versiona tudo
+└───────────────────────┘
+```
+
+---
+
+## Por que existe
+
+Diagramas de arquitetura envelhecem mal. Ficam presos em ferramentas proprietárias, divergem do
+código e são inúteis para LLMs. O ArchCode Studio resolve isso tratando a arquitetura como **código
+versionado**: cada nó, cada rota e cada requisito vive em arquivos de texto na árvore do projeto,
+editáveis por humanos no navegador, por desenvolvedores no VS Code e por agentes de IA via MCP —
+**simultaneamente, sem conflito e sem corromper o layout visual**.
+
+| Para quem | O que resolve |
+| :--- | :--- |
+| **Arquiteto / Tech Lead** | Diagrama, contratos de API e Mermaid versionados no mesmo commit do código; linter que aponta falhas estruturais. |
+| **Desenvolvedor** | O agente de IA lê a arquitetura real via MCP e implementa na ordem topológica correta, sem alucinar contexto. |
+| **Consultor / Software House** | Estimativa de esforço, custo de nuvem e proposta comercial gerados a partir do próprio desenho. |
+| **Agente de IA** | Ferramentas atômicas que preservam coordenadas, mantêm rastreabilidade e registram progresso. |
+
+---
+
+## Instalação
+
+```bash
+# A partir do código-fonte (requer Go 1.24+ e Node 20+)
+git clone https://github.com/archcode/studio archcode-studio
+cd archcode-studio
+make deps && make build
+sudo mv archcode-studio /usr/local/bin/
+
+# Docker
+docker run -p 8765:8765 -v "$PWD:/workspace" ghcr.io/archcode/studio
+```
+
+O binário final embute todo o frontend: a máquina do usuário **não precisa de Node.js**.
+
+## Deploy no Coolify
+
+O repositório já traz `Dockerfile`, `docker-entrypoint.sh` e `docker-compose.yml`.
+
+1. **New Resource → Public/Private Repository** apontando para este repo (branch `main`).
+2. Build pack: **Docker Compose** (usa `docker-compose.yml`, volume já declarado) ou **Dockerfile**.
+3. Porta exposta: `8765`. Configure o domínio normalmente.
+4. Com o build pack Dockerfile, adicione em **Storages** um volume persistente montado em `/workspace`.
+5. Variáveis de ambiente (opcionais):
+   - `ARCHCODE_PROJECT_NAME` — nome usado ao criar o projeto no primeiro boot.
+   - `ARCHCODE_BASE_URL` — URL pública (ex.: `https://arch.seudominio.com`), necessária para o MCP via SSE atrás do proxy.
+
+Na primeira execução, se `/workspace/.arch/manifest.yaml` não existir, o container roda `init` automaticamente. O healthcheck usa `GET /api/health`.
+
+> ⚠ O servidor não tem autenticação própria. Em instância pública, proteja o domínio (ex.: Basic Auth via labels do Traefik no Coolify) ou restrinja o acesso por rede.
+
+## Primeiros passos
+
+```bash
+mkdir meu-projeto && cd meu-projeto
+
+archcode-studio init --name "E-Commerce Enterprise" --author "Seu Nome"
+archcode-studio serve                 # abre http://127.0.0.1:8765
+archcode-studio mcp-config            # imprime como conectar seu agente de IA
+```
+
+`init` já cria uma arquitetura de exemplo funcional (Web App → Gateway → API → PostgreSQL/Redis),
+com requisitos, um caso de uso e um ADR — para você explorar tudo de imediato.
+Use `--empty` para começar do zero.
+
+---
+
+## Estrutura de arquivos
+
+Tudo o que o Studio sabe está aqui. Nada em banco de dados, nada em nuvem.
+
+```text
+meu-projeto/
+├── .arch/
+│   ├── manifest.yaml              # metadados do projeto e preferências
+│   ├── pricing.yaml               # valor/hora, horas base, catálogo de nuvem
+│   ├── tasks.json                 # espelho legível por máquina do ai-prd.md
+│   └── diagrams/
+│       ├── macro.json             # nós, arestas, posições — a fonte da verdade visual
+│       ├── macro.mermaid          # espelho Mermaid, regenerado a cada gravação
+│       ├── sequence/              # diagramas de sequência
+│       └── er/                    # modelagem de entidades
+├── docs/
+│   ├── requisitos.md              # RFs e RNFs em formato estruturado e estável
+│   ├── ai-prd.md                  # blueprint de implementação para agentes de IA
+│   ├── proposta-comercial.md      # proposta gerada a partir do escopo visual
+│   ├── casos-de-uso/              # um arquivo por caso de uso
+│   └── architecture-decisions/    # ADRs no formato Nygard
+└── api/
+    ├── endpoints.yaml             # contratos derivados das arestas do diagrama
+    └── openapi.yaml               # OpenAPI 3.1 exportado sob demanda
+```
+
+---
+
+## Interface
+
+| Tela | O que faz |
+| :--- | :--- |
+| **Arquitetura** | Canvas infinito com paleta de 9 tipos de componente, conexões tipadas, agrupamentos, minimapa e inspetor de metadados. Arrastar um nó grava em disco imediatamente. |
+| **Documentação** | Requisitos (RF/RNF), casos de uso com fluxos e critérios Given-When-Then, ADRs, visualização do AI-PRD e da proposta comercial. |
+| **Contratos** | Tabela editável de `api/endpoints.yaml` com exportação para OpenAPI 3.1. |
+| **Precificação** | Esforço por camada, distribuição por perfil, custo de nuvem, prazo e editor da tabela de preços. |
+| **Implementação** | Fila de tarefas em ordem topológica, com dependências, critérios de aceite e progresso — a mesma que a IA consome. |
+| **Pitch** | Apresentação em tela cheia com zoom cinematográfico por componente, alternância negócio/engenharia e exportação em SVG, PNG e PDF. |
+
+Atalhos no Modo Pitch: `→`/`←` navega, `E` alterna executivo/engenharia, `F` tela cheia, `Esc` sai.
+
+---
+
+## Integração com agentes de IA (MCP)
+
+```bash
+# Claude Code
+claude mcp add archcode-studio -- archcode-studio mcp --dir "$PWD"
+
+# Cursor, Antigravity, Windsurf, Roo Code — .mcp.json do projeto
+{
+  "mcpServers": {
+    "archcode-studio": {
+      "command": "archcode-studio",
+      "args": ["mcp", "--dir", "/caminho/do/projeto"]
+    }
+  }
+}
+
+# Transporte SSE, com `archcode-studio serve` rodando
+http://127.0.0.1:8765/mcp/sse
+```
+
+### Ferramentas expostas
+
+| Ferramenta | O que faz |
+| :--- | :--- |
+| `get_system_context` | Visão macro: componentes, conexões, endpoints, requisitos e progresso. |
+| `get_architecture_summary` | Resumo ultracompacto em texto, para janelas de contexto apertadas. |
+| `get_full_context` | Estado consolidado completo do projeto. |
+| `add_architecture_node` | Cria um componente calculando posição livre, sem sobrepor nós existentes. |
+| `connect_nodes` | Conecta componentes com protocolo, porta, segurança e contratos HTTP. |
+| `update_node_metadata` | Altera tecnologia, descrição, tags e precificação — preservando a posição. |
+| `remove_architecture_node` | Remove componente, conexões e contratos órfãos. |
+| `upsert_requirement` | Cria ou atualiza RF/RNF em `docs/requisitos.md`. |
+| `upsert_use_case` | Cria ou atualiza um caso de uso estruturado. |
+| `upsert_adr` | Registra uma decisão arquitetural. |
+| `calculate_project_estimate` | Horas, custo por perfil, infraestrutura e prazo. |
+| `generate_commercial_proposal` | Gera a proposta comercial completa. |
+| `generate_ai_prd` | Compila o blueprint com ordem topológica e critérios de aceite. |
+| `get_implementation_tasks` | Fila de tarefas com o campo `ready` (dependências satisfeitas). |
+| `mark_task_status` | Registra progresso — reflete no canvas do usuário em tempo real. |
+| `validate_architecture_rules` | Linter de 12 regras arquiteturais. |
+| `import_mermaid_diagram` | Importa um snippet Mermaid preservando coordenadas conhecidas. |
+| `export_openapi` | Gera `api/openapi.yaml`. |
+
+Dois prompts acompanham o servidor: `implement_next_task` e `model_new_feature`.
+
+### O ciclo completo
+
+```
+Usuário: "Crie um microserviço de pagamentos conectado ao Postgres e ao Stripe"
+   ↓
+IA → get_system_context          entende o que já existe
+IA → add_architecture_node       cria o serviço numa posição livre
+IA → connect_nodes               liga ao banco e ao Stripe, declara as rotas
+IA → upsert_requirement          registra o RF que justifica o componente
+IA → validate_architecture_rules corrige o que vier como "error"
+IA → generate_ai_prd             compila o blueprint de implementação
+   ↓
+Canvas do usuário atualiza em <50ms, com animação no nó recém-criado
+   ↓
+IA → get_implementation_tasks    pega a primeira tarefa pronta
+IA → escreve o código, roda os testes
+IA → mark_task_status            o nó fica verde no canvas
+```
+
+---
+
+## CLI
+
+```bash
+archcode-studio init        [--name --description --author --currency --empty --force]
+archcode-studio serve       [--port 8765 --host 127.0.0.1 --open --no-mcp]
+archcode-studio mcp         [--dir .]                  # servidor MCP em stdio
+archcode-studio prd         [--stack --granularity --no-tests]
+archcode-studio estimate    [--margin --json --detailed]
+archcode-studio validate    [--json --strict]          # sai com 1 se houver erros
+archcode-studio export      svg|mermaid|openapi|proposal [--mode --theme --out]
+archcode-studio mcp-config
+```
+
+`validate --strict` no CI reprova o build quando a arquitetura regride.
+
+---
+
+## Como funciona
+
+### Preservação de coordenadas
+
+Nenhuma operação de agente move um nó já posicionado. Componentes novos recebem posição calculada em
+anéis crescentes ao redor do nó âncora (aquele ao qual serão conectados), testando colisão contra
+todos os nós existentes. Só o arrasto humano no canvas altera posições — e o `AutoLayout` por camadas
+topológicas, que exige confirmação explícita.
+
+### Sincronização em tempo real
+
+O `fsnotify` observa `.arch/`, `docs/` e `api/` com *debounce* de 300 ms. Gravações feitas pelo
+próprio servidor são filtradas por um índice de eco (hash SHA-256 da última escrita), de modo que
+apenas edições externas — VS Code, `git checkout`, CLI de IA — chegam ao navegador. Toda escrita é
+atômica (arquivo temporário + `rename`) e serializada por um mutex de transação, então chamadas MCP
+concorrentes nunca se sobrescrevem.
+
+### Compilador de AI-PRD
+
+O `generate_ai_prd` percorre o grafo de dependências (`A → B` significa "A consome B", logo B é
+pré-requisito de A) e emite tarefas em ordem topológica: banco → domínio → serviços → integrações →
+interface → testes E2E. Ciclos são resolvidos pelo rank da camada, sem travar. Cada tarefa carrega
+dependências, requisitos, casos de uso, contratos e critérios de aceite verificáveis. Regenerar o
+documento **preserva o progresso já registrado** pelos agentes.
+
+### Precificação
+
+```
+Horas Totais = (Σ Horas(Nós) + Σ Horas(Arestas) + Σ Horas(Casos de Uso)) × (1 + Margem)
+```
+
+Cada parcela aceita valor explícito; na ausência dele, aplica-se o catálogo de `.arch/pricing.yaml`
+(horas base por tipo de componente × fator de complexidade). O resultado é distribuído por perfil
+profissional, somado a impostos, e acrescido do custo mensal de nuvem por tier de instância.
+
+---
+
+## Desenvolvimento
+
+```bash
+make deps        # dependências de Go e do frontend
+make dev         # backend :8765 + Vite com hot reload :5173
+make check       # gofmt, go vet, testes e typecheck — o mesmo que a CI roda
+make test-race   # testes com o detector de corrida
+make build       # binário único com o frontend embutido
+make release     # binários para Linux, macOS (Intel e Apple Silicon) e Windows
+```
+
+### Organização do código
+
+```text
+cmd/archcode-studio/    CLI e composição dos subcomandos
+internal/
+  model/                estruturas canônicas + serialização Markdown bidirecional
+  store/                acesso ao disco: escrita atômica, supressão de eco, snapshot
+  app/                  operações de domínio — única camada que muta estado
+  layout/               posicionamento inteligente e layout topológico
+  mermaid/              exportação determinística e importação de snippets
+  prd/                  compilador do AI-PRD e ordenação topológica
+  pricing/              motor de esforço, custo e prazo
+  lint/                 linter de regras arquiteturais
+  svgexport/            renderização SVG server-side
+  httpapi/              REST + WebSocket + SPA embutida
+  mcpserver/            ferramentas e prompts MCP
+  hub/ watcher/         eventos em tempo real e observação do disco
+  project/              scaffolding do `init`
+  webui/                embed.FS do bundle compilado
+web/                    frontend React 19 + Vite + Tailwind 4 + React Flow 12
+```
+
+A API HTTP e o servidor MCP chamam **exatamente os mesmos métodos** do pacote `app`. Uma escrita de
+IA passa pelas mesmas invariantes de uma ação humana — é isso que torna a colaboração segura.
+
+### Preparação para Wails v3
+
+O frontend conversa com o backend apenas através de `web/src/lib/transport.ts`. Para empacotar como
+app desktop nativo, registre ali uma implementação de IPC: nenhum componente de interface muda.
+
+---
+
+## Decisões de implementação que divergem do PRD original
+
+Duas escolhas conscientes, ambas documentadas no código:
+
+1. **Editor de requisitos estruturado em vez de BlockNote.** A serialização Markdown de editores
+   WYSIWYG genéricos é lossy e reescreveria o arquivo inteiro a cada edição, quebrando o formato
+   determinístico de que o parser Go e os diffs de Git dependem (RNF001). A tela entrega edição em
+   blocos de verdade — um formulário por requisito — mais um editor Markdown bruto para quem prefere.
+
+2. **Agrupamentos com coordenadas absolutas.** Nós de grupo (VPC, cluster, contexto delimitado) são
+   nós comuns renderizados atrás dos demais, em vez de usar o sistema de nó-pai do React Flow, que
+   exige coordenadas relativas. Isso mantém `macro.json` legível e todas as posições comparáveis
+   diretamente — essencial para a regra de preservação de coordenadas.
+
+---
+
+## Roadmap
+
+- [x] **Fase 1** — Core Go, WebSocket, file watcher, canvas React Flow
+- [x] **Fase 2** — Servidor MCP (stdio + SSE), ferramentas atômicas, compilador de AI-PRD
+- [x] **Fase 3** — Documentação, Mermaid bidirecional, Modo Pitch, exportações
+- [x] **Fase 4** — Precificação, proposta comercial, linter, OpenAPI 3.1
+- [ ] **Fase 5** — App desktop nativo com Wails v3 (a camada de transporte já está pronta)
+
+---
+
+## Licença
+
+MIT.

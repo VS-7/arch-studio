@@ -1,0 +1,174 @@
+{
+  "version": "1.0.0",
+  "last_modified": "2026-09-23T03:45:22Z",
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  },
+  "nodes": [
+    {
+      "id": "node-web-app",
+      "type": "client",
+      "position": {
+        "x": 120,
+        "y": 200
+      },
+      "data": {
+        "label": "Web App",
+        "technology": "React 19 / Vite",
+        "description": "Interface principal utilizada pelos clientes finais.",
+        "tier": "frontend",
+        "executive": true,
+        "status": "pending",
+        "pricing": {
+          "complexity": "medium",
+          "cloud_tier": "vercel.pro"
+        }
+      }
+    },
+    {
+      "id": "node-api-gateway",
+      "type": "gateway",
+      "position": {
+        "x": 440,
+        "y": 200
+      },
+      "data": {
+        "label": "API Gateway",
+        "technology": "Traefik",
+        "description": "Porta de entrada única: roteamento, TLS e rate limiting.",
+        "tier": "integration",
+        "executive": true,
+        "status": "pending",
+        "pricing": {
+          "complexity": "low",
+          "cloud_tier": "cloud_run.small"
+        }
+      }
+    },
+    {
+      "id": "node-core-api",
+      "type": "compute",
+      "position": {
+        "x": 760,
+        "y": 200
+      },
+      "data": {
+        "label": "Core API",
+        "technology": "Go 1.23 / net/http",
+        "description": "Regras de negócio e orquestração dos casos de uso.",
+        "tier": "backend",
+        "tags": [
+          "critical"
+        ],
+        "executive": true,
+        "status": "pending",
+        "pricing": {
+          "complexity": "high",
+          "cloud_tier": "ecs.fargate.0.5"
+        }
+      }
+    },
+    {
+      "id": "node-postgres",
+      "type": "database",
+      "position": {
+        "x": 1080,
+        "y": 120
+      },
+      "data": {
+        "label": "PostgreSQL",
+        "technology": "PostgreSQL 16",
+        "description": "Persistência transacional do domínio.",
+        "tier": "data",
+        "executive": false,
+        "status": "pending",
+        "pricing": {
+          "complexity": "medium",
+          "cloud_tier": "db.t4g.small"
+        }
+      }
+    },
+    {
+      "id": "node-redis",
+      "type": "cache",
+      "position": {
+        "x": 1080,
+        "y": 300
+      },
+      "data": {
+        "label": "Redis",
+        "technology": "Redis 7",
+        "description": "Cache de sessões e rate limiting distribuído.",
+        "tier": "data",
+        "executive": false,
+        "status": "pending",
+        "pricing": {
+          "complexity": "low",
+          "cloud_tier": "elasticache.t4g"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-web-app-to-api-gateway",
+      "source": "node-web-app",
+      "target": "node-api-gateway",
+      "type": "smoothstep",
+      "animated": false,
+      "data": {
+        "protocol": "REST",
+        "port": 443,
+        "description": "Chamadas da interface para a API",
+        "security": "TLS + JWT",
+        "complexity": "medium"
+      }
+    },
+    {
+      "id": "edge-api-gateway-to-core-api",
+      "source": "node-api-gateway",
+      "target": "node-core-api",
+      "type": "smoothstep",
+      "animated": false,
+      "data": {
+        "protocol": "REST",
+        "port": 8080,
+        "description": "Roteamento interno autenticado",
+        "security": "mTLS",
+        "endpoints": [
+          "post-api-v1-auth-login",
+          "get-api-v1-me"
+        ],
+        "complexity": "low"
+      }
+    },
+    {
+      "id": "edge-core-api-to-postgres",
+      "source": "node-core-api",
+      "target": "node-postgres",
+      "type": "smoothstep",
+      "animated": false,
+      "data": {
+        "protocol": "SQL",
+        "port": 5432,
+        "description": "Leitura e escrita do domínio",
+        "complexity": "medium"
+      }
+    },
+    {
+      "id": "edge-core-api-to-redis",
+      "source": "node-core-api",
+      "target": "node-redis",
+      "type": "smoothstep",
+      "animated": false,
+      "data": {
+        "protocol": "Redis",
+        "port": 6379,
+        "description": "Cache de sessão",
+        "complexity": "low"
+      }
+    }
+  ]
+}

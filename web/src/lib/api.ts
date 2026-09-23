@@ -1,0 +1,132 @@
+// Chamadas de domínio tipadas. Nenhum componente monta URLs manualmente.
+
+import { transport } from './transport'
+import type {
+  ADR, ArchEdge, ArchNode, Diagram, Endpoint, EndpointsSpec, Estimate,
+  LintReport, PricingConfig, Requirement, RequirementsDoc, Snapshot, Task, UseCase,
+} from './types'
+
+const { request } = { request: transport.request.bind(transport) }
+
+export interface NodeInput {
+  label?: string
+  type?: string
+  technology?: string
+  description?: string
+  tier?: string
+  tags?: string[]
+  complexity?: string
+  estimated_hours?: number
+  cloud_tier?: string
+  monthly_cost?: number
+  requirements?: string[]
+  use_cases?: string[]
+  executive?: boolean
+  status?: string
+  connect_to?: string
+  protocol?: string
+  position?: { x: number; y: number }
+}
+
+export interface SvgOptions {
+  mode?: 'executive' | 'engineering'
+  theme?: 'light' | 'dark'
+  transparent?: boolean
+  download?: boolean
+  title?: boolean
+}
+
+export interface EdgeInput {
+  source_id: string
+  target_id: string
+  protocol?: string
+  port?: number
+  description?: string
+  security?: string
+  label?: string
+  complexity?: string
+  estimated_hours?: number
+  animated?: boolean
+}
+
+export const api = {
+  health: () => request<{ status: string; version: string; root: string; frontend: boolean }>('GET', '/api/health'),
+  snapshot: () => request<Snapshot>('GET', '/api/snapshot'),
+
+  // Diagrama
+  getDiagram: () => request<Diagram>('GET', '/api/diagram'),
+  saveDiagram: (d: Diagram) => request<{ saved: boolean }>('PUT', '/api/diagram', d),
+  addNode: (input: NodeInput) => request<ArchNode>('POST', '/api/diagram/nodes', input),
+  updateNode: (id: string, input: NodeInput) =>
+    request<ArchNode>('PATCH', `/api/diagram/nodes/${encodeURIComponent(id)}`, input),
+  deleteNode: (id: string) => request<{ deleted: boolean }>('DELETE', `/api/diagram/nodes/${encodeURIComponent(id)}`),
+  addEdge: (input: EdgeInput) =>
+    request<{ edge: ArchEdge; endpoints: Endpoint[] }>('POST', '/api/diagram/edges', input),
+  deleteEdge: (id: string) => request<{ deleted: boolean }>('DELETE', `/api/diagram/edges/${encodeURIComponent(id)}`),
+  autoLayout: () => request<Diagram>('POST', '/api/diagram/autolayout', {}),
+  importMermaid: (source: string) => request<Diagram>('POST', '/api/diagram/import-mermaid', { source }),
+
+  // Documentação
+  getRequirements: () => request<{ doc: RequirementsDoc; raw: string }>('GET', '/api/requirements'),
+  upsertRequirement: (req: Requirement) => request<Requirement>('POST', '/api/requirements', req),
+  saveRequirementsRaw: (content: string) => request<{ saved: boolean }>('PUT', '/api/requirements/raw', { content }),
+  deleteRequirement: (id: string) => request<{ deleted: boolean }>('DELETE', `/api/requirements/${encodeURIComponent(id)}`),
+
+  listUseCases: () => request<UseCase[]>('GET', '/api/use-cases'),
+  upsertUseCase: (uc: UseCase) => request<{ use_case: UseCase; file: string }>('POST', '/api/use-cases', uc),
+  deleteUseCase: (code: string) => request<{ deleted: boolean }>('DELETE', `/api/use-cases/${encodeURIComponent(code)}`),
+
+  listADRs: () => request<ADR[]>('GET', '/api/adrs'),
+  upsertADR: (adr: ADR) => request<{ adr: ADR; file: string }>('POST', '/api/adrs', adr),
+  deleteADR: (id: string) => request<{ deleted: boolean }>('DELETE', `/api/adrs/${encodeURIComponent(id)}`),
+
+  // Contratos
+  listEndpoints: () => request<EndpointsSpec>('GET', '/api/endpoints'),
+  upsertEndpoint: (ep: Endpoint) => request<Endpoint>('POST', '/api/endpoints', ep),
+  deleteEndpoint: (id: string) => request<{ deleted: boolean }>('DELETE', `/api/endpoints/${encodeURIComponent(id)}`),
+  exportOpenAPI: () => request<{ file_path: string }>('POST', '/api/endpoints/openapi', {}),
+
+  // Precificação
+  getPricing: () => request<PricingConfig>('GET', '/api/pricing'),
+  savePricing: (cfg: PricingConfig) => request<PricingConfig>('PUT', '/api/pricing', cfg),
+  estimate: (margin?: number) =>
+    request<Estimate>('GET', `/api/estimate${margin !== undefined && margin >= 0 ? `?margin=${margin}` : ''}`),
+  generateProposal: (opts: {
+    client_name?: string; validity_days?: number; margin?: number
+    include_diagram: boolean; include_cloud: boolean; notes?: string
+  }) => request<{ file_path: string; markdown: string; total_cost: number; currency: string }>('POST', '/api/proposal', opts),
+
+  // AI-PRD
+  generatePRD: (opts: { target_stack?: string; include_test_scenarios?: boolean; granularity?: string }) =>
+    request<{ file_path: string; total_tasks: number; hash: string; overall_progress_percentage: number; summary: string }>(
+      'POST', '/api/ai-prd', opts),
+  getTasks: (status = 'all') =>
+    request<{ tasks: Task[]; total: number; progress: number; generated_at: string; target_stack: string }>(
+      'GET', `/api/tasks?status=${encodeURIComponent(status)}`),
+  setTaskStatus: (id: string, status: string, notes?: string) =>
+    request<{ task_id: string; updated: boolean; status: string; overall_progress_percentage: number }>(
+      'POST', `/api/tasks/${encodeURIComponent(id)}/status`, { status, notes }),
+
+  // Qualidade
+  validate: () => request<LintReport>('GET', '/api/validate'),
+
+  // Arquivos brutos
+  readFile: (path: string) => request<{ path: string; content: string }>('GET', `/api/file?path=${encodeURIComponent(path)}`),
+  writeFile: (path: string, content: string) => request<{ saved: boolean }>('PUT', '/api/file', { path, content }),
+
+  // Exportação
+  svgUrl: (opts: SvgOptions): string => {
+    const params = new URLSearchParams()
+    if (opts.mode) params.set('mode', opts.mode)
+    if (opts.theme) params.set('theme', opts.theme)
+    if (opts.transparent) params.set('transparent', '1')
+    if (opts.download) params.set('download', '1')
+    if (opts.title === false) params.set('title', '0')
+    return transport.resourceUrl(`/api/export/svg?${params.toString()}`)
+  },
+  fetchSvg: async (opts: SvgOptions): Promise<string> => {
+    const res = await fetch(api.svgUrl(opts))
+    if (!res.ok) throw new Error('falha ao gerar SVG')
+    return res.text()
+  },
+}

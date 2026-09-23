@@ -1,0 +1,23 @@
+%% Gerado automaticamente pelo ArchCode Studio a partir de .arch/diagrams/macro.json
+%% Não edite manualmente enquanto o servidor estiver rodando: as alterações serão sobrescritas.
+flowchart LR
+    node_web_app(["Web App<br/><small>React 19 / Vite</small>"])
+    node_api_gateway{{"API Gateway<br/><small>Traefik</small>"}}
+    node_core_api["Core API<br/><small>Go 1.23 / net/http</small>"]
+    node_postgres[("PostgreSQL<br/><small>PostgreSQL 16</small>")]
+    node_redis(("Redis<br/><small>Redis 7</small>"))
+    node_api_gateway -->|"REST :8080"| node_core_api
+    node_core_api -->|"SQL :5432"| node_postgres
+    node_core_api -->|"Redis :6379"| node_redis
+    node_web_app -->|"REST :443"| node_api_gateway
+
+    classDef cache fill:#5f3b1e,stroke:#f59e0b,color:#fff4e6
+    class node_redis cache
+    classDef client fill:#2b2b3f,stroke:#94a3b8,color:#eef2f7
+    class node_web_app client
+    classDef compute fill:#1e3a5f,stroke:#3b82f6,color:#e6f0ff
+    class node_core_api compute
+    classDef database fill:#3b1e5f,stroke:#a855f7,color:#f5e6ff
+    class node_postgres database
+    classDef gateway fill:#5f1e2e,stroke:#f43f5e,color:#ffe6ec
+    class node_api_gateway gateway

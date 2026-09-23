@@ -1,0 +1,66 @@
+currency: BRL
+hourly_rates:
+  cloud_architect: 260
+  pleno_engineer: 120
+  senior_engineer: 180
+  tech_lead: 250
+complexity_multipliers:
+  backend_complex_business: 20
+  backend_crud_endpoint: 6
+  ci_cd_pipeline: 16
+  database_modeling: 12
+  frontend_screen_complex: 24
+  frontend_screen_simple: 8
+  integration_external_api: 16
+node_type_hours:
+  cache: 8
+  client: 40
+  compute: 32
+  database: 12
+  external_service: 16
+  gateway: 16
+  group: 0
+  queue: 16
+  storage: 8
+complexity_factors:
+  high: 1.8
+  low: 0.6
+  medium: 1
+protocol_hours:
+  amqp: 10
+  graphql: 10
+  grpc: 10
+  kafka: 12
+  nosql: 4
+  rest: 6
+  s3: 4
+  sql: 4
+  webhook: 8
+  websocket: 12
+use_case_hours:
+  high: 32
+  low: 8
+  medium: 16
+cloud_catalog:
+  cloud_run.small: 80
+  cloudfront: 45
+  db.t4g.micro: 110
+  db.t4g.small: 220
+  ecs.fargate.0.5: 140
+  elasticache.t4g: 130
+  lambda.low: 25
+  s3.standard: 30
+  supabase.pro: 135
+  t4g.medium: 190
+  t4g.small: 95
+  vercel.pro: 110
+role_distribution:
+  cloud_architect: 0.1
+  pleno_engineer: 0.3
+  senior_engineer: 0.45
+  tech_lead: 0.15
+risk_margin_percentage: 20
+tax_percentage: 15
+team_size: 2
+hours_per_day: 6
+working_days_per_month: 21

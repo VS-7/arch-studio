@@ -1,0 +1,24 @@
+# Deploy via Coolify (build pack "Docker Compose") ou `docker compose up -d`.
+# Variáveis: ARCHCODE_PROJECT_NAME (nome usado no primeiro init) e
+# ARCHCODE_BASE_URL (URL pública, ex.: https://arch.seudominio.com — usada pelo MCP/SSE).
+services:
+  archcode-studio:
+    build: .
+    restart: unless-stopped
+    environment:
+      - PORT=8765
+      - ARCHCODE_PROJECT_NAME=${ARCHCODE_PROJECT_NAME:-ArchCode Project}
+      - ARCHCODE_BASE_URL=${ARCHCODE_BASE_URL:-}
+    ports:
+      - "8765"
+    volumes:
+      - archcode-data:/workspace
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8765/api/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  archcode-data:
