@@ -26,6 +26,7 @@ import { Toolbox, type ToolboxContext } from './components/shell/Toolbox'
 import { TasksView } from './components/tasks/TasksView'
 import { Badge, Button, IconAction, Modal, Spinner, Tip, ToastProvider, useToast } from './components/ui'
 import { Button as UIButton } from './components/ui/button'
+import { ErrorBoundary } from './components/ui/error-boundary'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip'
 import { UmlCanvas, type UmlCanvasHandle } from './components/uml/UmlCanvas'
 import { NewDiagramDialog, RenameDiagramDialog, UmlMermaidDialog } from './components/uml/UmlDialogs'
@@ -386,6 +387,7 @@ function Shell() {
         <main className="flex min-w-0 flex-1 flex-col">
           <TabStrip tabs={tabs} active={active} diagrams={diagrams} onActivate={(t) => setActiveKey(tabKey(t))} onClose={closeTab} />
           <div className="relative min-h-0 flex-1">
+            <ErrorBoundary key={activeKey} area={active?.type === 'view' ? VIEW_LABEL[active.view] : activeDiagram?.name ?? 'Arquitetura'}>
             {!active && (
               <div className="grid h-full place-items-center text-[13px] text-muted-foreground">
                 Abra um diagrama pelo Model Explorer.
@@ -429,6 +431,7 @@ function Shell() {
                 {active.view === 'tasks' && <TasksView snapshot={snapshot} onGeneratePRD={() => void generatePRD()} />}
               </div>
             )}
+            </ErrorBoundary>
           </div>
         </main>
 
@@ -461,6 +464,7 @@ function Shell() {
               <div className="flex min-h-0 flex-1 flex-col">
                 <PanelHeader title="Editor" />
                 <div className="min-h-0 flex-1 overflow-y-auto bg-background">
+                  <ErrorBoundary key={`${activeKey}|${selection?.id ?? ''}`} area="Editor">
                   <EditorPanel
                     snapshot={snapshot}
                     active={active}
@@ -475,6 +479,7 @@ function Shell() {
                     onExport={(f) => void umlHandle?.exportImage(f)}
                     archFocus={(id) => archHandle?.focusNode(id)}
                   />
+                  </ErrorBoundary>
                 </div>
               </div>
             </aside>

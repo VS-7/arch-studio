@@ -173,3 +173,22 @@ func TestExportIncluiEstilos(t *testing.T) {
 		}
 	}
 }
+
+// Diagramas UML colados em "Importar Mermaid" da arquitetura eram lidos como
+// flowchart e viravam componentes sem sentido ("<|", "motivo: String").
+func TestImportRecusaDiagramasNaoArquiteturais(t *testing.T) {
+	for _, src := range []string{
+		"classDiagram\n  class Pedido {\n    +motivo: String\n  }\n  Pedido <|-- Cliente",
+		"```mermaid\n%% comentário\nsequenceDiagram\n  A->>B: oi\n```",
+		"stateDiagram-v2\n  [*] --> Ativo",
+		"erDiagram\n  CLIENTE ||--o{ PEDIDO : faz",
+		"   \n",
+	} {
+		if _, err := Import(src, nil); err == nil {
+			t.Errorf("esperava erro para %q", src)
+		}
+	}
+	if _, err := Import("%% arquitetura\nflowchart LR\n  a[\"API\"] --> b[(\"DB\")]", nil); err != nil {
+		t.Fatalf("flowchart válido recusado: %v", err)
+	}
+}

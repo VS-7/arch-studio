@@ -102,10 +102,14 @@ func Calculate(d *model.Diagram, useCases []model.UseCase, cfg *model.PricingCon
 		TaxPercentage: cfg.TaxPercentage,
 		TeamSize:      cfg.TeamSize,
 		HoursPerDay:   cfg.HoursPerDay,
-		Items:         []LineItem{},
-		ByTier:        map[string]float64{},
-		ByType:        map[string]float64{},
-		Generated:     time.Now().UTC().Format(time.RFC3339),
+		// Listas sempre inicializadas: o JSON sai como [] (nunca null), que é
+		// o que a UI e os clientes MCP esperam iterar.
+		Roles:      []RoleCost{},
+		CloudItems: []CloudItem{},
+		Items:      []LineItem{},
+		ByTier:     map[string]float64{},
+		ByType:     map[string]float64{},
+		Generated:  time.Now().UTC().Format(time.RFC3339),
 	}
 
 	margin := cfg.RiskMarginPercentage

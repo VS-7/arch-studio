@@ -1,7 +1,9 @@
 package pricing
 
 import (
+	"encoding/json"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/archcode/studio/internal/model"
@@ -135,6 +137,28 @@ func TestMoneyFormatacaoBrasileira(t *testing.T) {
 	for value, want := range cases {
 		if got := Money("BRL", value); got != want {
 			t.Errorf("Money(%v) = %q, want %q", value, got, want)
+		}
+	}
+}
+
+// Projeto sem tier de nuvem, papéis ou componentes: as listas precisam sair
+// como [] no JSON. Um `null` em cloud_items derrubava a tela de Precificação.
+func TestListasVaziasNuncaSaemNull(t *testing.T) {
+	cfg := model.DefaultPricing()
+	cfg.RoleDistribution = map[string]float64{}
+	d := model.NewDiagram()
+	d.Nodes = []model.Node{{ID: "api", Type: "compute", Data: model.NodeData{Label: "API"}}}
+
+	for _, diag := range []*model.Diagram{d, model.NewDiagram()} {
+		data, err := json.Marshal(Calculate(diag, nil, cfg, -1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := string(data)
+		for _, field := range []string{"roles", "cloud_items", "items"} {
+			if strings.Contains(out, `"`+field+`":null`) {
+				t.Errorf("%s saiu como null: %s", field, out)
+			}
 		}
 	}
 }

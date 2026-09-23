@@ -50,6 +50,21 @@ export interface EdgeInput {
   animated?: boolean
 }
 
+/**
+ * Servidores antigos serializavam listas vazias como `null` (slice nil do Go).
+ * Normaliza aqui para que nenhuma tela precise se defender campo a campo.
+ */
+function normalizeEstimate(e: Estimate): Estimate {
+  return {
+    ...e,
+    roles: e.roles ?? [],
+    cloud_items: e.cloud_items ?? [],
+    items: e.items ?? [],
+    by_tier: e.by_tier ?? {},
+    by_type: e.by_type ?? {},
+  }
+}
+
 export const api = {
   health: () => request<{ status: string; version: string; root: string; frontend: boolean }>('GET', '/api/health'),
   snapshot: () => request<Snapshot>('GET', '/api/snapshot'),
@@ -116,7 +131,8 @@ export const api = {
   getPricing: () => request<PricingConfig>('GET', '/api/pricing'),
   savePricing: (cfg: PricingConfig) => request<PricingConfig>('PUT', '/api/pricing', cfg),
   estimate: (margin?: number) =>
-    request<Estimate>('GET', `/api/estimate${margin !== undefined && margin >= 0 ? `?margin=${margin}` : ''}`),
+    request<Estimate>('GET', `/api/estimate${margin !== undefined && margin >= 0 ? `?margin=${margin}` : ''}`)
+      .then(normalizeEstimate),
   generateProposal: (opts: {
     client_name?: string; validity_days?: number; margin?: number
     include_diagram: boolean; include_cloud: boolean; notes?: string

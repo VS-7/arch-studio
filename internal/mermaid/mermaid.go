@@ -7,6 +7,7 @@
 package mermaid
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -250,6 +251,47 @@ type parsedNode struct {
 // Import converte um snippet Mermaid (flowchart/graph) em um diagrama.
 // Posições são calculadas por AutoLayout; se `base` for informado, nós já
 // existentes com o mesmo rótulo preservam suas coordenadas originais (RF017).
+// umlHeaders mapeia cabeçalhos Mermaid que não descrevem arquitetura para a
+// orientação dada ao usuário. Importá-los como flowchart gerava componentes
+// sem sentido ("<|", "motivo: String", nomes vazios).
+var umlHeaders = map[string]string{
+	"classdiagram":       "diagrama de classes",
+	"sequencediagram":    "diagrama de sequência",
+	"statediagram":       "diagrama de estados",
+	"erdiagram":          "diagrama entidade-relacionamento",
+	"journey":            "jornada de usuário",
+	"gantt":              "gráfico de Gantt",
+	"pie":                "gráfico de pizza",
+	"mindmap":            "mapa mental",
+	"timeline":           "linha do tempo",
+	"gitgraph":           "grafo de git",
+	"quadrantchart":      "gráfico de quadrantes",
+	"requirementdiagram": "diagrama de requisitos",
+}
+
+// checkImportKind recusa snippets Mermaid que não são flowchart/graph/C4.
+func checkImportKind(lines []string) error {
+	for _, l := range lines {
+		t := strings.ToLower(strings.TrimSpace(l))
+		if t == "" || strings.HasPrefix(t, "%%") || t == "---" || strings.HasPrefix(t, "title:") || strings.HasPrefix(t, "config:") {
+			continue
+		}
+		head := strings.Fields(t)[0]
+		for prefix, name := range umlHeaders {
+			if strings.HasPrefix(head, prefix) {
+				hint := ""
+				switch prefix {
+				case "classdiagram", "sequencediagram", "statediagram":
+					hint = " Crie um diagrama UML pelo Model Explorer (ou pelas ferramentas MCP create_uml_diagram/add_uml_element) para modelá-lo."
+				}
+				return fmt.Errorf("o snippet é um %s, não uma arquitetura: importe apenas flowchart, graph ou C4.%s", name, hint)
+			}
+		}
+		return nil
+	}
+	return errors.New("snippet Mermaid vazio")
+}
+
 func Import(src string, base *model.Diagram) (*model.Diagram, error) {
 	lines := strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n")
 	// Remove fences de markdown.
@@ -260,6 +302,10 @@ func Import(src string, base *model.Diagram) (*model.Diagram, error) {
 			continue
 		}
 		cleaned = append(cleaned, reComment.ReplaceAllString(l, ""))
+	}
+
+	if err := checkImportKind(cleaned); err != nil {
+		return nil, err
 	}
 
 	nodes := map[string]*parsedNode{}
