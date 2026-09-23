@@ -7,6 +7,7 @@
 # Frontend
 web/node_modules/
 web/.vite/
+web/*.tsbuildinfo
 
 # Bundle embutido: gerado por `make build`, não versionado.
 internal/webui/dist/*
