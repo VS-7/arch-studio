@@ -56,17 +56,17 @@ O binário final embute todo o frontend: a máquina do usuário **não precisa d
 
 ## Deploy no Coolify
 
-O repositório já traz `Dockerfile`, `docker-entrypoint.sh` e `docker-compose.yml`.
+O repositório segue o mesmo padrão de deploy do Harmoni (`Dockerfile` + `docker-compose.yml`):
 
-1. **New Resource → Public/Private Repository** apontando para este repo (branch `main`).
-2. Build pack: **Docker Compose** (usa `docker-compose.yml`, volume já declarado) ou **Dockerfile**.
-3. Porta exposta: `8765`. Configure o domínio normalmente.
-4. Com o build pack Dockerfile, adicione em **Storages** um volume persistente montado em `/workspace`.
-5. Variáveis de ambiente (opcionais):
-   - `ARCHCODE_PROJECT_NAME` — nome usado ao criar o projeto no primeiro boot.
-   - `ARCHCODE_BASE_URL` — URL pública (ex.: `https://arch.seudominio.com`), necessária para o MCP via SSE atrás do proxy.
+1. Conecte o repositório Git no Coolify (branch `main`).
+2. Selecione o tipo de build **Docker Compose**.
+3. O volume persistente é `/workspace` (onde ficam `.arch/`, `docs/` e `api/`).
+4. Configure as variáveis de ambiente com base no `.env.example`. Defina `ARCHCODE_BASE_URL` com o domínio público para o MCP via SSE funcionar.
+5. Inicie o deploy!
 
 Na primeira execução, se `/workspace/.arch/manifest.yaml` não existir, o container roda `init` automaticamente. O healthcheck usa `GET /api/health`.
+
+Localmente: `cp .env.example .env && docker compose up -d --build` → http://localhost:8765
 
 > ⚠ O servidor não tem autenticação própria. Em instância pública, proteja o domínio (ex.: Basic Auth via labels do Traefik no Coolify) ou restrinja o acesso por rede.
 

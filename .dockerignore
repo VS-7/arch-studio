@@ -11,3 +11,5 @@ coverage.out
 *.test
 *.tmp
 .archcode-*
+.env
+/workspace

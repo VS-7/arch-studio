@@ -18,3 +18,7 @@ internal/webui/dist/*
 coverage.out
 *.tmp
 .archcode-*
+
+# Deploy local
+/workspace/
+.env
