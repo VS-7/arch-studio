@@ -2,10 +2,11 @@
 // do StarUML. Cada item só dispara callbacks; o estado vive no Shell.
 
 import {
-  Bot, ClipboardPaste, Code2, Copy, CopyPlus, Download, FileImage, FilePlus2, Keyboard, Maximize, Monitor, Moon,
-  Network, Plug, Presentation, Redo2, Scissors, ShieldCheck, Sparkles, SquareDashedMousePointer, Sun, Trash2,
-  Undo2, Wand2, ZoomIn, ZoomOut,
+  Bot, ClipboardPaste, Code2, Copy, CopyPlus, Download, FileImage, FilePlus2, Keyboard, LayoutPanelLeft, Maximize,
+  Monitor, Moon, Network, PanelsTopLeft, Plug, Presentation, Redo2, Scissors, ShieldCheck, Sparkles,
+  SquareDashedMousePointer, Sun, Trash2, Undo2, Wand2, ZoomIn, ZoomOut,
 } from 'lucide-react'
+import { VIEW_LABEL, type ViewId } from '../../lib/tabs'
 import type { ThemePreference } from '../../lib/theme'
 import type { UMLKind } from '../../lib/types'
 import { KIND_META, UML_KINDS } from '../../lib/umlMeta'
@@ -14,6 +15,7 @@ import {
   MenubarShortcut, MenubarSub, MenubarSubContent, MenubarSubTrigger, MenubarTrigger,
 } from '../ui/menubar'
 import { KindGlyph } from '../uml/UmlGlyph'
+import { VIEW_ICON, VIEW_ORDER } from './viewMeta'
 
 export interface MenuActions {
   newDiagram: (kind: UMLKind) => void
@@ -39,6 +41,8 @@ export interface MenuActions {
   pitch: () => void
   shortcuts: () => void
   about: () => void
+  openView: (view: ViewId) => void
+  resetLayout: () => void
 }
 
 export function AppMenubar({ actions, theme, onTheme, panels, onPanels, executive, onExecutive, archActive }: {
@@ -110,6 +114,17 @@ export function AppMenubar({ actions, theme, onTheme, panels, onPanels, executiv
           <MenubarCheckboxItem checked={panels.right} onCheckedChange={(v) => onPanels({ ...panels, right: v })}>
             Model Explorer e Editor<MenubarShortcut>Ctrl+J</MenubarShortcut>
           </MenubarCheckboxItem>
+          <MenubarItem onSelect={actions.resetLayout}><LayoutPanelLeft />Redefinir layout dos painéis</MenubarItem>
+          <MenubarSeparator />
+          <MenubarSub>
+            <MenubarSubTrigger><PanelsTopLeft />Documentação e gestão</MenubarSubTrigger>
+            <MenubarSubContent>
+              {VIEW_ORDER.map((view) => {
+                const Icon = VIEW_ICON[view]
+                return <MenubarItem key={view} onSelect={() => actions.openView(view)}><Icon />{VIEW_LABEL[view]}</MenubarItem>
+              })}
+            </MenubarSubContent>
+          </MenubarSub>
           <MenubarSeparator />
           <MenubarItem disabled={!actions.fit} onSelect={() => actions.fit?.()}><Maximize />Ajustar à tela<MenubarShortcut>Shift+1</MenubarShortcut></MenubarItem>
           <MenubarItem disabled={!actions.zoomIn} onSelect={() => actions.zoomIn?.()}><ZoomIn />Aproximar<MenubarShortcut>+</MenubarShortcut></MenubarItem>

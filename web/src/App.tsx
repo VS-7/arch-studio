@@ -1,7 +1,7 @@
 import { ReactFlowProvider } from '@xyflow/react'
 import {
-  AlertTriangle, BookOpen, Bot, CheckCircle2, ClipboardPaste, Copy, CopyPlus, Info, Moon, Network, PanelLeft,
-  PanelRight, Play, Plug, Presentation, Receipt, Redo2, Sun, Terminal, Trash2, Undo2, Waypoints, Workflow, X,
+  AlertTriangle, Bot, CheckCircle2, ClipboardPaste, Copy, CopyPlus, Info, Moon, PanelLeft, PanelLeftClose,
+  PanelRight, Play, Plug, Presentation, Redo2, Sun, Terminal, Trash2, Undo2, Waypoints, X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
@@ -9,7 +9,8 @@ import { api } from './lib/api'
 import { useHistory } from './lib/history'
 import { relativeTime } from './lib/format'
 import { ProjectProvider, useProject } from './lib/project'
-import { tabKey, parseTabKey, VIEW_LABEL, type TabRef, type ViewId } from './lib/tabs'
+import { useStored } from './lib/storage'
+import { normalizeTabKey, parseTabKey, tabKey, VIEW_LABEL, type TabRef, type ViewId } from './lib/tabs'
 import { ThemeProvider, useTheme } from './lib/theme'
 import { SELECT_TOOL, type Selection, type Tool } from './lib/tools'
 import type { Estimate, ServerEvent, Snapshot, UMLDiagram, UMLKind } from './lib/types'
@@ -19,12 +20,18 @@ import { ArchCanvas, type CanvasHandle } from './components/canvas/ArchCanvas'
 import type { CanvasCommands } from './components/canvas/CanvasMenu'
 import { Inspector } from './components/canvas/Inspector'
 import { MermaidPanel } from './components/canvas/MermaidPanel'
-import { DocsView, type DocsTab } from './components/docs/DocsView'
+import { AdrPanel } from './components/docs/AdrPanel'
+import { AiPrdView, ProposalView } from './components/docs/GeneratedDocs'
+import { DocumentPanel } from './components/docs/reqdoc/DocumentPanel'
+import { RequirementsPanel } from './components/docs/RequirementsPanel'
+import { UseCasesPanel } from './components/docs/UseCasesPanel'
 import { PitchMode } from './components/pitch/PitchMode'
 import { PricingView } from './components/pricing/PricingView'
 import { AppMenubar, type MenuActions } from './components/shell/AppMenubar'
 import { ModelExplorer } from './components/shell/ModelExplorer'
+import { PanelHeader, SectionHeader, Splitter } from './components/shell/panels'
 import { Toolbox, type ToolboxContext } from './components/shell/Toolbox'
+import { VIEW_ICON } from './components/shell/viewMeta'
 import { TasksView } from './components/tasks/TasksView'
 import { Badge, Button, IconAction, Modal, Spinner, Tip, ToastProvider, useToast } from './components/ui'
 import { Button as UIButton } from './components/ui/button'
@@ -71,56 +78,31 @@ function AppWithEvents() {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Preferências de layout (por navegador)                                      */
+/* Layout dos painéis (preferências por navegador)                              */
 /* -------------------------------------------------------------------------- */
 
-function useStored<T>(key: string, initial: T): [T, (v: T) => void] {
-  const [value, setValue] = useState<T>(() => {
-    try {
-      const raw = localStorage.getItem(key)
-      return raw ? (JSON.parse(raw) as T) : initial
-    } catch { return initial }
-  })
-  const set = useCallback((v: T) => {
-    setValue(v)
-    try { localStorage.setItem(key, JSON.stringify(v)) } catch { /* ignora */ }
-  }, [key])
-  return [value, set]
-}
+const LEFT_DEFAULT = 220
+const LEFT_MIN = 160
+const RIGHT_DEFAULT = 310
+const RIGHT_MIN = 220
+const EXPLORER_DEFAULT = 0.45
 
-/** Divisor arrastável entre painéis. */
-function Splitter({ onDrag, vertical }: { onDrag: (delta: number) => void; vertical?: boolean }) {
-  const start = (e: React.MouseEvent) => {
-    e.preventDefault()
-    let last = vertical ? e.clientY : e.clientX
-    const move = (ev: MouseEvent) => {
-      const cur = vertical ? ev.clientY : ev.clientX
-      onDrag(cur - last)
-      last = cur
-    }
-    const up = () => {
-      window.removeEventListener('mousemove', move)
-      window.removeEventListener('mouseup', up)
-      document.body.style.cursor = ''
-    }
-    document.body.style.cursor = vertical ? 'row-resize' : 'col-resize'
-    window.addEventListener('mousemove', move)
-    window.addEventListener('mouseup', up)
-  }
-  return (
-    <div onMouseDown={start}
-      className={cn('relative z-10 shrink-0 bg-border transition-colors hover:bg-primary/60',
-        vertical ? 'h-px cursor-row-resize before:absolute before:inset-x-0 before:-inset-y-1' : 'w-px cursor-col-resize before:absolute before:inset-y-0 before:-inset-x-1')} />
-  )
-}
+type SideSection = 'explorer' | 'editor'
+/** Seções da barra lateral direita: abertas/recolhidas e qual está maximizada. */
+type SideSections = { explorer: boolean; editor: boolean; max: SideSection | null }
+const SECTIONS_DEFAULT: SideSections = { explorer: true, editor: true, max: null }
 
-function PanelHeader({ title, children }: { title: string; children?: ReactNode }) {
-  return (
-    <div className="flex h-7 shrink-0 items-center justify-between border-b bg-panel-header px-2.5">
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</span>
-      <div className="flex items-center gap-0.5">{children}</div>
-    </div>
-  )
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
+
+/** Largura da janela, para limitar os painéis laterais em telas menores. */
+function useViewportWidth(): number {
+  const [width, setWidth] = useState(() => window.innerWidth)
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  return width
 }
 
 /* -------------------------------------------------------------------------- */
@@ -137,9 +119,11 @@ function Shell() {
   const [tabKeys, setTabKeys] = useStored<string[]>('archcode-tabs', ['arch'])
   const [activeKey, setActiveKey] = useStored<string>('archcode-active-tab', 'arch')
   const [panels, setPanels] = useStored('archcode-panels', { left: true, right: true })
-  const [leftWidth, setLeftWidth] = useStored('archcode-left-width', 220)
-  const [rightWidth, setRightWidth] = useStored('archcode-right-width', 310)
-  const [explorerRatio, setExplorerRatio] = useStored('archcode-explorer-ratio', 0.45)
+  const [leftWidth, setLeftWidth] = useStored('archcode-left-width', LEFT_DEFAULT)
+  const [rightWidth, setRightWidth] = useStored('archcode-right-width', RIGHT_DEFAULT)
+  const [explorerRatio, setExplorerRatio] = useStored('archcode-explorer-ratio', EXPLORER_DEFAULT)
+  const [sections, setSections] = useStored<SideSections>('archcode-side-sections', SECTIONS_DEFAULT)
+  const viewport = useViewportWidth()
 
   const [tool, setTool] = useState<Tool>(SELECT_TOOL)
   const [selection, setSelection] = useState<Selection>(null)
@@ -149,7 +133,8 @@ function Shell() {
   const [executive, setExecutive] = useState(false)
   const [pitch, setPitch] = useState(false)
   const [zoom, setZoom] = useState(1)
-  const [docsFocus, setDocsFocus] = useState<{ tab: DocsTab; code?: string; at: number } | null>(null)
+  // Ficha de caso de uso a abrir para edição ao entrar na aba Casos de Uso.
+  const [useCaseFocus, setUseCaseFocus] = useState<{ code: string; at: number } | null>(null)
 
   const [archMermaidOpen, setArchMermaidOpen] = useState(false)
   const [lintOpen, setLintOpen] = useState(false)
@@ -167,6 +152,16 @@ function Shell() {
   const rightPanel = useRef<HTMLDivElement>(null)
 
   const diagrams = useMemo(() => snapshot?.uml_diagrams ?? [], [snapshot?.uml_diagrams])
+
+  // Abas gravadas por versões anteriores (ex.: "view:docs", a antiga aba única de
+  // Documentação) são convertidas uma vez para o formato atual.
+  useEffect(() => {
+    const keys = [...new Set(tabKeys.map(normalizeTabKey).filter((k): k is string => !!k))]
+    if (keys.join('|') !== tabKeys.join('|')) setTabKeys(keys)
+    const active = normalizeTabKey(activeKey) ?? keys[0] ?? ''
+    if (active !== activeKey) setActiveKey(active)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Abas cujo diagrama deixou de existir (excluído por IA ou no disco) somem.
   const tabs = useMemo(() => tabKeys
@@ -196,8 +191,11 @@ function Shell() {
     if (activeKey === key) setActiveKey(next[Math.max(0, idx - 1)] ?? '')
   }, [activeKey, setActiveKey, setTabKeys, tabKeys])
 
-  // Trocar de aba limpa a seleção e a ferramenta.
-  useEffect(() => { setSelection(null); setTool(SELECT_TOOL); setUmlHandle(null) }, [activeKey])
+  // Trocar de aba limpa a seleção e a ferramenta (e o pedido de abrir uma ficha).
+  useEffect(() => {
+    setSelection(null); setTool(SELECT_TOOL); setUmlHandle(null)
+    if (activeKey !== 'view:use-cases') setUseCaseFocus(null)
+  }, [activeKey])
 
   /* Ações ------------------------------------------------------------------ */
 
@@ -281,6 +279,11 @@ function Shell() {
     }, 0)
   }, [openTab])
 
+  const openUseCase = useCallback((code: string) => {
+    setUseCaseFocus({ code, at: Date.now() })
+    openTab({ type: 'view', view: 'use-cases' })
+  }, [openTab])
+
   const selectArchNode = useCallback((nodeId: string) => {
     openTab({ type: 'arch' })
     setTimeout(() => {
@@ -350,6 +353,30 @@ function Shell() {
   if (pitch) return <PitchMode snapshot={snapshot} estimate={estimate} onExit={() => setPitch(false)} />
 
   const archActive = active?.type === 'arch'
+
+  // Larguras limitadas pela janela: a área central nunca fica espremida.
+  const leftMax = Math.max(LEFT_MIN, Math.min(520, viewport * 0.35))
+  const rightMax = Math.max(RIGHT_MIN, Math.min(760, viewport * 0.5))
+  const leftW = clamp(leftWidth, LEFT_MIN, leftMax)
+  const rightW = clamp(rightWidth, RIGHT_MIN, rightMax)
+
+  // Com uma seção maximizada, a outra mostra só o cabeçalho.
+  const explorerOpen = sections.max ? sections.max === 'explorer' : sections.explorer
+  const editorOpen = sections.max ? sections.max === 'editor' : sections.editor
+  const toggleSection = (section: SideSection) => {
+    if (!sections.max) setSections({ ...sections, [section]: !sections[section] })
+    // Recolher a seção maximizada devolve o espaço à outra; expandir a outra restaura as duas.
+    else if (sections.max === section) setSections({ explorer: section !== 'explorer', editor: section !== 'editor', max: null })
+    else setSections(SECTIONS_DEFAULT)
+  }
+  const maximizeSection = (section: SideSection) => {
+    setSections(sections.max === section ? { ...sections, max: null } : { ...sections, [section]: true, max: section })
+  }
+  /** Garante o Editor visível (ex.: F2 / duplo clique para renomear). */
+  const revealEditor = () => {
+    if (!panels.right) setPanels({ ...panels, right: true })
+    if (!editorOpen) setSections({ ...sections, editor: true, max: sections.max === 'explorer' ? null : sections.max })
+  }
   const toolboxContext: ToolboxContext = archActive ? { type: 'arch' } : activeDiagram ? { type: 'uml', kind: activeDiagram.kind } : null
 
   const actions: MenuActions = {
@@ -376,6 +403,14 @@ function Shell() {
     pitch: () => setPitch(true),
     shortcuts: () => setShortcutsOpen(true),
     about: () => setAboutOpen(true),
+    openView: (view) => openTab({ type: 'view', view }),
+    resetLayout: () => {
+      setPanels({ left: true, right: true })
+      setLeftWidth(LEFT_DEFAULT)
+      setRightWidth(RIGHT_DEFAULT)
+      setExplorerRatio(EXPLORER_DEFAULT)
+      setSections(SECTIONS_DEFAULT)
+    },
   }
 
   const statusPath = archActive ? '.arch/diagrams/macro.json'
@@ -419,13 +454,18 @@ function Shell() {
       <div className="flex min-h-0 flex-1">
         {panels.left && (
           <>
-            <aside className="flex shrink-0 flex-col bg-chrome" style={{ width: leftWidth }}>
-              <PanelHeader title="Toolbox" />
+            <aside className="flex shrink-0 flex-col bg-chrome" style={{ width: leftW }}>
+              <PanelHeader title="Toolbox">
+                <IconAction label="Ocultar Toolbox (Ctrl+B)" onClick={() => setPanels({ ...panels, left: false })}>
+                  <PanelLeftClose size={13} />
+                </IconAction>
+              </PanelHeader>
               <div className="min-h-0 flex-1 overflow-y-auto">
                 <Toolbox context={toolboxContext} tool={tool} onTool={setTool} />
               </div>
             </aside>
-            <Splitter onDrag={(d) => setLeftWidth(Math.min(360, Math.max(170, leftWidth + d)))} />
+            <Splitter axis="x" label="Redimensionar Toolbox" value={leftW} min={LEFT_MIN} max={leftMax}
+              onChange={setLeftWidth} onReset={() => setLeftWidth(LEFT_DEFAULT)} />
           </>
         )}
 
@@ -465,7 +505,7 @@ function Shell() {
                 onRename={(id) => {
                   setSelection({ scope: 'uml', diagramId: activeDiagram.id, kind: 'element', id })
                   setFocusName(Date.now())
-                  if (!panels.right) setPanels({ ...panels, right: true })
+                  revealEditor()
                 }}
                 onReady={setUmlHandle}
                 onZoom={setZoom}
@@ -474,10 +514,14 @@ function Shell() {
             )}
             {active?.type === 'view' && (
               <div className="h-full overflow-hidden bg-background">
-                {active.view === 'docs' && (
-                  <DocsView key={docsFocus?.at ?? 'docs'} snapshot={snapshot} onGeneratePRD={() => void generatePRD()}
-                    initialTab={docsFocus?.tab} focusUseCase={docsFocus?.code} />
+                {active.view === 'document' && <DocumentPanel snapshot={snapshot} />}
+                {active.view === 'requirements' && <RequirementsPanel snapshot={snapshot} />}
+                {active.view === 'use-cases' && (
+                  <UseCasesPanel key={useCaseFocus?.at ?? 'use-cases'} snapshot={snapshot} focusCode={useCaseFocus?.code} />
                 )}
+                {active.view === 'adrs' && <AdrPanel snapshot={snapshot} />}
+                {active.view === 'ai-prd' && <AiPrdView snapshot={snapshot} generating={generating} onGeneratePRD={() => void generatePRD()} />}
+                {active.view === 'proposal' && <ProposalView snapshot={snapshot} />}
                 {active.view === 'api' && <ApiView snapshot={snapshot} />}
                 {active.view === 'pricing' && <PricingView snapshot={snapshot} />}
                 {active.view === 'tasks' && <TasksView snapshot={snapshot} onGeneratePRD={() => void generatePRD()} />}
@@ -489,53 +533,62 @@ function Shell() {
 
         {panels.right && (
           <>
-            <Splitter onDrag={(d) => setRightWidth(Math.min(520, Math.max(240, rightWidth - d)))} />
-            <aside ref={rightPanel} className="flex shrink-0 flex-col bg-chrome" style={{ width: rightWidth }}>
-              <div className="flex min-h-0 flex-col" style={{ height: `${explorerRatio * 100}%` }}>
-                <PanelHeader title="Model Explorer" />
-                <div className="min-h-0 flex-1 bg-background">
-                  <ModelExplorer
-                    snapshot={snapshot}
-                    activeTab={active}
-                    selection={selection}
-                    onOpen={openTab}
-                    onSelectElement={selectUmlElement}
-                    onSelectArchNode={selectArchNode}
-                    onCreateDiagram={(kind) => setNewDiagram(kind)}
-                    onRenameDiagram={setRenaming}
-                    onDeleteDiagram={(d) => void deleteDiagram(d)}
-                    onShowMermaid={setMermaidOf}
-                    onGenerateUseCases={() => void generateUseCases()}
-                    onOpenDocs={(tab) => { setDocsFocus({ tab, at: Date.now() }); openTab({ type: 'view', view: 'docs' }) }}
-                  />
-                </div>
+            <Splitter axis="x" invert label="Redimensionar Model Explorer e Editor" value={rightW} min={RIGHT_MIN} max={rightMax}
+              onChange={setRightWidth} onReset={() => setRightWidth(RIGHT_DEFAULT)} />
+            <aside ref={rightPanel} className="flex shrink-0 flex-col bg-chrome" style={{ width: rightW }}>
+              <div className={cn('flex min-h-0 flex-col', explorerOpen && !editorOpen && 'flex-1')}
+                style={explorerOpen && editorOpen ? { height: `${explorerRatio * 100}%` } : undefined}>
+                <SectionHeader title="Model Explorer" open={explorerOpen} maximized={sections.max === 'explorer'}
+                  onToggle={() => toggleSection('explorer')} onMaximize={() => maximizeSection('explorer')} />
+                {explorerOpen && (
+                  <div className="min-h-0 flex-1 bg-background">
+                    <ModelExplorer
+                      snapshot={snapshot}
+                      activeTab={active}
+                      selection={selection}
+                      onOpen={openTab}
+                      onSelectElement={selectUmlElement}
+                      onSelectArchNode={selectArchNode}
+                      onCreateDiagram={(kind) => setNewDiagram(kind)}
+                      onRenameDiagram={setRenaming}
+                      onDeleteDiagram={(d) => void deleteDiagram(d)}
+                      onShowMermaid={setMermaidOf}
+                      onGenerateUseCases={() => void generateUseCases()}
+                    />
+                  </div>
+                )}
               </div>
-              <Splitter vertical onDrag={(d) => {
-                const h = rightPanel.current?.clientHeight ?? 800
-                setExplorerRatio(Math.min(0.8, Math.max(0.2, explorerRatio + d / h)))
-              }} />
-              <div className="flex min-h-0 flex-1 flex-col">
-                <PanelHeader title="Editor" />
-                <div className="min-h-0 flex-1 overflow-y-auto bg-background">
-                  <ErrorBoundary key={`${activeKey}|${selection?.id ?? ''}`} area="Editor">
-                  <EditorPanel
-                    snapshot={snapshot}
-                    active={active}
-                    diagram={activeDiagram}
-                    selection={selection}
-                    focusName={focusName}
-                    multiCount={multiCount}
-                    onCommand={(name) => void runCommand(name)}
-                    onClose={() => setSelection(null)}
-                    onFocusArch={(id) => selectArchNode(id)}
-                    onOpenUseCase={(code) => { setDocsFocus({ tab: 'use-cases', code, at: Date.now() }); openTab({ type: 'view', view: 'docs' }) }}
-                    onRename={setRenaming}
-                    onMermaid={setMermaidOf}
-                    onExport={(f) => void umlHandle?.exportImage(f)}
-                    archFocus={(id) => archHandle?.focusNode(id)}
-                  />
-                  </ErrorBoundary>
-                </div>
+              {explorerOpen && editorOpen && (
+                <Splitter axis="y" label="Redimensionar a altura do Model Explorer e do Editor"
+                  value={explorerRatio} min={0.12} max={0.88}
+                  scale={() => 1 / (rightPanel.current?.clientHeight || 800)}
+                  onChange={setExplorerRatio} onReset={() => setExplorerRatio(EXPLORER_DEFAULT)} />
+              )}
+              <div className={cn('flex min-h-0 flex-col', editorOpen && 'flex-1', explorerOpen && !editorOpen && 'border-t')}>
+                <SectionHeader title="Editor" open={editorOpen} maximized={sections.max === 'editor'}
+                  onToggle={() => toggleSection('editor')} onMaximize={() => maximizeSection('editor')} />
+                {editorOpen && (
+                  <div className="min-h-0 flex-1 overflow-y-auto bg-background">
+                    <ErrorBoundary key={`${activeKey}|${selection?.id ?? ''}`} area="Editor">
+                    <EditorPanel
+                      snapshot={snapshot}
+                      active={active}
+                      diagram={activeDiagram}
+                      selection={selection}
+                      focusName={focusName}
+                      multiCount={multiCount}
+                      onCommand={(name) => void runCommand(name)}
+                      onClose={() => setSelection(null)}
+                      onFocusArch={(id) => selectArchNode(id)}
+                      onOpenUseCase={openUseCase}
+                      onRename={setRenaming}
+                      onMermaid={setMermaidOf}
+                      onExport={(f) => void umlHandle?.exportImage(f)}
+                      archFocus={(id) => archHandle?.focusNode(id)}
+                    />
+                    </ErrorBoundary>
+                  </div>
+                )}
               </div>
             </aside>
           </>
@@ -647,7 +700,7 @@ function TabStrip({ tabs, active, diagrams, onActivate, onClose }: {
 }
 
 function ViewIcon({ view }: { view: ViewId }) {
-  const Icon = { docs: BookOpen, api: Network, pricing: Receipt, tasks: Workflow }[view]
+  const Icon = VIEW_ICON[view]
   return <Icon size={13} />
 }
 
@@ -830,6 +883,8 @@ function ShortcutsModal({ open, onClose }: { open: boolean; onClose: () => void 
     ['+ / −', 'Aproximar / afastar (diagramas UML)'],
     ['Ctrl + B', 'Mostrar/ocultar Toolbox'],
     ['Ctrl + J', 'Mostrar/ocultar Model Explorer e Editor'],
+    ['Arrastar a borda do painel', 'Redimensionar Toolbox, barra lateral e a altura Model Explorer/Editor (duplo clique restaura)'],
+    ['Clique no título do painel', 'Recolher/expandir o Model Explorer ou o Editor (o botão ⤢ maximiza)'],
     ['Arrastar no vazio', 'Selecionar vários elementos com uma caixa'],
     ['Botão do meio / scroll', 'Mover o canvas'],
   ]

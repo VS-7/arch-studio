@@ -6,12 +6,13 @@
 // o formato determinístico que o parser Go e o Git dependem (RNF001). O usuário
 // ganha edição em blocos de verdade — e o arquivo continua estável.
 
-import { Code2, FileText, Pencil, Plus, Trash2 } from 'lucide-react'
+import { BookOpen, Code2, FileText, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { Requirement, Snapshot } from '../../lib/types'
 import { renderMarkdown } from '../../lib/markdown'
 import { PRIORITIES, RNF_CATEGORIES } from '../../lib/requirements'
+import { ViewFrame } from '../shell/ViewFrame'
 import { Badge, Button, Card, ChipPicker, Field, Input, Modal, Select, Textarea, useToast } from '../ui'
 import { useConfirm } from '../ui/confirm'
 
@@ -80,14 +81,15 @@ export function RequirementsPanel({ snapshot }: { snapshot: Snapshot }) {
   const group = (title: string, items: Requirement[], kind: 'RF' | 'RNF') => (
     <Card
       title={`${title} (${items.length})`}
-      actions={<Button size="sm" icon={Plus} onClick={() => setEditing({ ...EMPTY, type: kind })}>Novo</Button>}
+      actions={<Button size="sm" variant="ghost" icon={Plus} onClick={() => setEditing({ ...EMPTY, type: kind })}>Novo {kind}</Button>}
     >
       {items.length === 0 ? (
         <p className="py-4 text-center text-xs text-muted-app">Nenhum requisito cadastrado.</p>
       ) : (
         <ul className="space-y-2">
           {items.map((r) => (
-            <li key={r.id} className="group rounded-lg border border-app px-3 py-2.5 transition-colors hover:surface-3">
+            <li key={r.id} onClick={() => setEditing(r)}
+              className="group cursor-pointer rounded-lg border border-app px-3 py-2.5 transition-colors hover:surface-3">
               <div className="flex items-start gap-2.5">
                 <span className="mt-0.5 font-mono text-[11px] font-bold text-primary">{r.id}</span>
                 <div className="min-w-0 flex-1">
@@ -104,7 +106,8 @@ export function RequirementsPanel({ snapshot }: { snapshot: Snapshot }) {
                     })}
                   </div>
                 </div>
-                <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+                  onClick={(e) => e.stopPropagation()}>
                   <Button variant="ghost" size="icon" onClick={() => setEditing(r)} aria-label="Editar"><Pencil size={13} /></Button>
                   <Button variant="ghost" size="icon" onClick={() => void remove(r.id)} aria-label="Remover"
                     className="text-destructive"><Trash2 size={13} /></Button>
@@ -118,22 +121,32 @@ export function RequirementsPanel({ snapshot }: { snapshot: Snapshot }) {
   )
 
   return (
-    <div className="space-y-4">
+    <ViewFrame icon={BookOpen} title="Requisitos"
+      meta={`${functional.length} funcionais · ${nonFunctional.length} não funcionais · docs/requisitos.md`}
+      actions={
+        <>
+          <Button size="sm" variant="ghost" icon={Code2} onClick={() => void openRaw()}>Editar Markdown</Button>
+          <Button size="sm" variant="secondary" icon={Plus} onClick={() => setEditing({ ...EMPTY, type: 'RNF' })}>Novo RNF</Button>
+          <Button size="sm" variant="primary" icon={Plus} onClick={() => setEditing({ ...EMPTY, type: 'RF' })}>Novo RF</Button>
+        </>
+      }>
+    <div className="space-y-4 p-4">
       <Card
         title="Visão Geral do Produto"
         actions={
-          <>
-            <Button size="sm" variant="ghost" icon={Code2} onClick={() => void openRaw()}>Markdown</Button>
-            <Button size="sm" variant="primary" onClick={() => void saveOverview()} loading={savingOverview}>Salvar</Button>
-          </>
+          <Button size="sm" variant="primary" onClick={() => void saveOverview()} loading={savingOverview}
+            disabled={overview === snapshot.requirements.overview}>Salvar</Button>
         }
       >
-        <Textarea rows={5} value={overview} onChange={(e) => setOverview(e.target.value)}
+        <Textarea rows={4} value={overview} onChange={(e) => setOverview(e.target.value)} className="min-h-24 resize-y"
           placeholder="Objetivo do sistema, problema de negócio e público-alvo. Os agentes de IA leem este texto como contexto de produto." />
       </Card>
 
-      {group('Requisitos Funcionais', functional, 'RF')}
-      {group('Requisitos Não Funcionais', nonFunctional, 'RNF')}
+      {/* Lado a lado quando a área central é larga; empilhados quando estreita. */}
+      <div className="grid items-start gap-4 @5xl:grid-cols-2">
+        {group('Requisitos Funcionais', functional, 'RF')}
+        {group('Requisitos Não Funcionais', nonFunctional, 'RNF')}
+      </div>
 
       <RequirementModal
         requirement={editing}
@@ -151,6 +164,7 @@ export function RequirementsPanel({ snapshot }: { snapshot: Snapshot }) {
         <Textarea rows={24} value={raw} onChange={(e) => setRaw(e.target.value)} className="font-mono text-xs" />
       </Modal>
     </div>
+    </ViewFrame>
   )
 }
 

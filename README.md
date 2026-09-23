@@ -125,8 +125,11 @@ meu-projeto/
 O layout segue o StarUML: **barra de menus** (Arquivo, Editar, Exibir, Modelo, Ferramentas, Ajuda),
 **Toolbox** à esquerda com as formas do diagrama aberto, **abas de diagramas** no centro,
 **Model Explorer** (árvore do projeto) e **Editor** de propriedades à direita, e **barra de status**
-com arquivo, contagens, qualidade e zoom. Os painéis são redimensionáveis e ocultáveis
-(`Ctrl+B` / `Ctrl+J`). Os componentes de interface são do [shadcn/ui](https://ui.shadcn.com)
+com arquivo, contagens, qualidade e zoom. Os painéis são ocultáveis (`Ctrl+B` / `Ctrl+J`) e
+redimensionáveis arrastando a borda — a largura da Toolbox e da barra lateral e a altura entre
+Model Explorer e Editor (duplo clique na borda restaura o padrão). Model Explorer e Editor podem ser
+recolhidos (clique no título) ou maximizados dentro da barra lateral; *Exibir → Redefinir layout dos
+painéis* volta tudo ao padrão. Os componentes de interface são do [shadcn/ui](https://ui.shadcn.com)
 (Radix + Tailwind), com **tema claro, escuro ou do sistema** (menu *Exibir → Tema*), que vale também
 para a área de desenho.
 
@@ -134,7 +137,7 @@ para a área de desenho.
 | :--- | :--- |
 | **Arquitetura** | Canvas do diagrama macro em notação de componentes UML («service», «database»…), com 9 tipos de componente, conexões tipadas, agrupamentos, minimapa e editor de metadados. Arrastar um nó grava em disco imediatamente. |
 | **Diagramas UML** | Casos de uso, classes, sequência e estados (veja abaixo). Escolha a forma na Toolbox e clique no canvas; relações por arraste entre as alças ou por clique na origem e no destino. Exportação em PNG, SVG e Mermaid. |
-| **Documentação** | Requisitos (RF/RNF), casos de uso com fluxos e critérios Given-When-Then, ADRs, visualização do AI-PRD e da proposta comercial. |
+| **Documentação** | Cada documento abre na sua própria aba, como os diagramas: Documento de Requisitos (folha A4 com zoom, estrutura navegável e pendências), Requisitos (RF/RNF), casos de uso com fluxos e critérios Given-When-Then, ADRs, AI-PRD e proposta comercial. Abra pelo Model Explorer ou por *Exibir → Documentação e gestão*. |
 | **Contratos** | Tabela editável de `api/endpoints.yaml` com exportação para OpenAPI 3.1. |
 | **Precificação** | Esforço por camada, distribuição por perfil, custo de nuvem, prazo e editor da tabela de preços. |
 | **Implementação** | Fila de tarefas em ordem topológica, com dependências, critérios de aceite e progresso — a mesma que a IA consome. |

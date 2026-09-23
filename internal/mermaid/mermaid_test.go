@@ -192,3 +192,80 @@ func TestImportRecusaDiagramasNaoArquiteturais(t *testing.T) {
 		t.Fatalf("flowchart válido recusado: %v", err)
 	}
 }
+
+// edgeArch reúne nomes que já quebraram o Mermaid 11 ("Syntax error in text"):
+// rótulos vazios, ids que são palavras reservadas e rótulos só de espaços.
+func edgeArch() *model.Diagram {
+	d := model.NewDiagram()
+	d.Nodes = []model.Node{
+		{ID: "node-login", Type: "client", Position: model.Position{X: 0}},
+		{ID: "node-vazio", Type: "compute", Position: model.Position{X: 10}, Data: model.NodeData{Label: "   ", Technology: "Go"}},
+		{ID: "end", Type: "database", Position: model.Position{X: 20}, Data: model.NodeData{Label: "Fim"}},
+		{ID: "Class", Type: "queue", Position: model.Position{X: 30}, Data: model.NodeData{Label: `a "b" | c %%{init}%% <br/> ] ) }`}},
+		{ID: "node-q", Type: "cache", Position: model.Position{X: 40}, Data: model.NodeData{Label: "</"}},
+		// "<b" + um `="` adiante: o Mermaid reescreveria as aspas das linhas seguintes.
+		{ID: "node-tag", Type: "compute", Position: model.Position{X: 50}, Data: model.NodeData{Label: "List<String> <b"}},
+		{ID: "node-igual", Type: "compute", Position: model.Position{X: 60}, Data: model.NodeData{Label: "x="}},
+		{ID: "grp", Type: "group", Position: model.Position{X: -100, Y: -100}, Width: 800, Height: 600},
+	}
+	d.Edges = []model.Edge{
+		{ID: "e1", Source: "node-login", Target: "end", Label: "   "},
+		{ID: "e2", Source: "end", Target: "Class", Label: "x (y) | z"},
+		{ID: "e3", Source: "Class", Target: "node-q"},
+	}
+	return d
+}
+
+func TestExportRotulosVaziosEIdsReservados(t *testing.T) {
+	out := Export(edgeArch())
+	for _, bad := range []string{`[""]`, `([""])`, `|""|`, "\n    end[", " --> end\n", "%%{"} {
+		if strings.Contains(out, bad) {
+			t.Errorf("saída contém %q, que o Mermaid 11 recusa:\n%s", bad, out)
+		}
+	}
+	for _, want := range []string{
+		`node_login(["node-login"])`,                     // sem rótulo: mostra o id
+		`node_vazio["node-vazio<br/><small>Go</small>"]`, // só espaços também
+		`subgraph grp["grp"]`,
+		`end_[("Fim")]`,
+		`Class_>"a 'b' / c %{init}% #60;br/> ] ) }"]`, // HTML digitado pelo usuário vira texto
+		`node_tag["List#60;String> #60;b"]`,
+		"node_login --> end_\n", // rótulo só de espaços é omitido
+		`end_ -->|"x (y) / z"| Class_`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("saída sem %q:\n%s", want, out)
+		}
+	}
+}
+
+// O escape de "<" feito na exportação é desfeito na importação.
+func TestRoundTripPreservaMenorQue(t *testing.T) {
+	d := sample()
+	d.Nodes[1].Data.Label = "Core<API>"
+	imported, err := Import(Export(d), nil)
+	if err != nil {
+		t.Fatalf("importação falhou: %v", err)
+	}
+	for _, n := range imported.Nodes {
+		if n.Data.Label == "Core<API>" {
+			return
+		}
+	}
+	t.Errorf("rótulo com \"<\" não sobreviveu à ida e volta: %+v", imported.Nodes)
+}
+
+// Um nó `id[" "]` importado virava componente sem nome.
+func TestImportRotuloVazioUsaID(t *testing.T) {
+	d, err := Import("flowchart LR\n  login[\" \"] --> api([\"API\"])", nil)
+	if err != nil {
+		t.Fatalf("importação falhou: %v", err)
+	}
+	labels := map[string]bool{}
+	for _, n := range d.Nodes {
+		labels[n.Data.Label] = true
+	}
+	if !labels["login"] || !labels["API"] || labels[""] {
+		t.Errorf("rótulos inesperados: %v", labels)
+	}
+}

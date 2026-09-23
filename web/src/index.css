@@ -246,3 +246,14 @@
 .md-body th { background: var(--muted); font-weight: 650; }
 .md-body hr { border: none; border-top: 1px solid var(--border); margin: 1.4rem 0; }
 .md-body a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+
+/* Diagrama Mermaid que não passou no parser (ver lib/mermaid.ts). */
+.mermaid-error { border: 1px dashed var(--border); border-radius: var(--radius); padding: 0.6rem 0.8rem; font-size: 12px; color: var(--muted-foreground); }
+.mermaid-error p { margin: 0; }
+.mermaid-error summary { cursor: pointer; margin-top: 0.35rem; }
+.mermaid-error pre { margin: 0.4rem 0 0; font-size: 11px; max-height: 16rem; overflow: auto; }
+
+/* Durante o arraste de um divisor (components/shell/panels.tsx): cursor fixo e
+   sem seleção de texto, mesmo quando o ponteiro passa sobre outros painéis. */
+body.resizing-x, body.resizing-x * { cursor: col-resize !important; user-select: none !important; }
+body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select: none !important; }

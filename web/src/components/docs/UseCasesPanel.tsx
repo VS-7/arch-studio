@@ -6,7 +6,8 @@ import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { Snapshot, UseCase } from '../../lib/types'
 import { PRIORITIES } from '../../lib/requirements'
-import { Badge, Button, Card, ChipPicker, EmptyState, Field, Input, Modal, Select, StringList, Textarea, useToast } from '../ui'
+import { ViewFrame } from '../shell/ViewFrame'
+import { Badge, Button, ChipPicker, EmptyState, Field, Input, Modal, Select, StringList, Textarea, useToast } from '../ui'
 import { useConfirm } from '../ui/confirm'
 
 const EMPTY: UseCase = {
@@ -40,48 +41,51 @@ export function UseCasesPanel({ snapshot, focusCode }: { snapshot: Snapshot; foc
   }
 
   return (
-    <div className="space-y-4">
-      <Card title={`Casos de Uso (${snapshot.use_cases.length})`}
-        actions={<Button size="sm" icon={Plus} onClick={() => setEditing({ ...EMPTY })}>Novo caso de uso</Button>}>
-        {snapshot.use_cases.length === 0 ? (
-          <EmptyState icon={ListChecks} title="Nenhum caso de uso"
-            description="Casos de uso viram critérios de aceite Given-When-Then no AI-PRD e alimentam a estimativa de esforço."
-            action={<Button variant="primary" icon={Plus} onClick={() => setEditing({ ...EMPTY })}>Criar o primeiro</Button>} />
-        ) : (
-          <ul className="space-y-2">
-            {snapshot.use_cases.map((uc) => (
-              <li key={uc.code} className="group rounded-lg border border-app px-3 py-2.5 transition-colors hover:surface-3">
-                <div className="flex items-start gap-2.5">
-                  <span className="mt-0.5 font-mono text-[11px] font-bold text-ai">{uc.code}</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-semibold text-app">{uc.name}</p>
-                    <p className="mt-0.5 text-[11.5px] text-muted-app">
-                      {(uc.actors ?? []).join(', ') || 'sem atores'} · {uc.main_flow?.length ?? 0} passos ·{' '}
-                      {uc.exceptions?.length ?? 0} exceções
-                    </p>
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      <Badge color="#8b5cf6">{uc.complexity ?? 'medium'}</Badge>
-                      {uc.estimated_hours ? <Badge>{uc.estimated_hours}h</Badge> : null}
-                      {(uc.components ?? []).map((c) => {
-                        const label = snapshot.diagram.nodes.find((n) => n.id === c)?.data.label ?? c
-                        return <Badge key={c} color="#10b981">{label}</Badge>
-                      })}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Button variant="ghost" size="icon" onClick={() => setEditing(uc)} aria-label="Editar"><Pencil size={13} /></Button>
-                    <Button variant="ghost" size="icon" className="text-destructive" aria-label="Remover"
-                      onClick={() => void remove(uc.code)}><Trash2 size={13} /></Button>
+    <ViewFrame icon={ListChecks} title="Casos de Uso"
+      meta={`${snapshot.use_cases.length} ficha(s) · docs/casos-de-uso/`}
+      actions={<Button size="sm" variant="primary" icon={Plus} onClick={() => setEditing({ ...EMPTY })}>Novo caso de uso</Button>}>
+      {snapshot.use_cases.length === 0 ? (
+        <EmptyState icon={ListChecks} title="Nenhum caso de uso"
+          description="Casos de uso viram critérios de aceite Given-When-Then no AI-PRD e alimentam a estimativa de esforço."
+          action={<Button variant="primary" icon={Plus} onClick={() => setEditing({ ...EMPTY })}>Criar o primeiro</Button>} />
+      ) : (
+        <ul className="grid gap-2 p-4 @3xl:grid-cols-2 @7xl:grid-cols-3">
+          {snapshot.use_cases.map((uc) => (
+            <li key={uc.code} onClick={() => setEditing(uc)}
+              className="group cursor-pointer rounded-lg border bg-card px-3 py-2.5 shadow-xs transition-colors hover:bg-muted">
+              <div className="flex items-start gap-2.5">
+                <span className="mt-0.5 font-mono text-[11px] font-bold text-ai">{uc.code}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-semibold text-app">{uc.name}</p>
+                  {uc.description && <p className="mt-0.5 line-clamp-2 text-[12px] text-muted-app">{uc.description}</p>}
+                  <p className="mt-0.5 text-[11.5px] text-muted-app">
+                    {(uc.actors ?? []).join(', ') || 'sem atores'} · {uc.main_flow?.length ?? 0} passos ·{' '}
+                    {uc.exceptions?.length ?? 0} exceções
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    <Badge color="#8b5cf6">{uc.complexity ?? 'medium'}</Badge>
+                    {uc.estimated_hours ? <Badge>{uc.estimated_hours}h</Badge> : null}
+                    {(uc.requirements ?? []).map((r) => <Badge key={r}>{r}</Badge>)}
+                    {(uc.components ?? []).map((c) => {
+                      const label = snapshot.diagram.nodes.find((n) => n.id === c)?.data.label ?? c
+                      return <Badge key={c} color="#10b981">{label}</Badge>
+                    })}
                   </div>
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+                <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+                  onClick={(e) => e.stopPropagation()}>
+                  <Button variant="ghost" size="icon" onClick={() => setEditing(uc)} aria-label="Editar"><Pencil size={13} /></Button>
+                  <Button variant="ghost" size="icon" className="text-destructive" aria-label="Remover"
+                    onClick={() => void remove(uc.code)}><Trash2 size={13} /></Button>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {editing && <UseCaseModal useCase={editing} snapshot={snapshot} onClose={() => setEditing(null)} onSave={save} />}
-    </div>
+    </ViewFrame>
   )
 }
 

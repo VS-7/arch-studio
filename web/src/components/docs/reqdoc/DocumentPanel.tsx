@@ -2,21 +2,31 @@
 // só existem aqui (cliente, usuários, histórico, referências, glossário) e
 // exportação em Markdown, PDF e DOCX. Todo o resto — requisitos, casos de uso,
 // diagramas, arquitetura, ADRs e contratos — é puxado do projeto na hora.
+//
+// Layout de editor: a folha A4 ocupa a área central (com zoom e "ajustar à
+// largura") e um painel lateral traz a estrutura navegável e as pendências.
 
 import {
-  AlertTriangle, CheckCircle2, ChevronDown, FileDown, FileText, FileType2, Loader2, Printer, RefreshCw, Save,
-  Settings2,
+  AlertTriangle, CheckCircle2, ChevronDown, FileDown, FileText, FileType2, ListTree, Loader2, PanelRight, Printer,
+  RefreshCw, Save, Settings2, ZoomIn, ZoomOut,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { cn } from '@/lib/utils'
 import { api } from '../../../lib/api'
+import { useStored } from '../../../lib/storage'
 import type { ReqDocument, Snapshot } from '../../../lib/types'
-import { Button, EmptyState, useToast } from '../../ui'
+import { Button, EmptyState, IconAction, useToast } from '../../ui'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../ui/dropdown-menu'
+import { ViewFrame } from '../../shell/ViewFrame'
 import { DocumentMetaEditor } from './DocumentMetaEditor'
 import { buildDocx } from './docx'
 import { DOC_CSS, documentHtml, printDocument } from './html'
+
+/** Largura da folha A4 (21 cm) em pixels CSS. */
+const PAGE_PX = (21 / 2.54) * 96
+const ZOOM_STEPS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
 
 function download(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -66,7 +76,10 @@ export function DocumentPanel({ snapshot }: { snapshot: Snapshot }) {
   const [error, setError] = useState<string | null>(null)
   const [metaOpen, setMetaOpen] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
-  const [showPending, setShowPending] = useState(true)
+  const [sideOpen, setSideOpen] = useStored('archcode-doc-side', true)
+  const [zoom, setZoom] = useStored<'fit' | number>('archcode-doc-zoom', 'fit')
+  const [fitZoom, setFitZoom] = useState(1)
+  const desk = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
     try {
@@ -85,8 +98,34 @@ export function DocumentPanel({ snapshot }: { snapshot: Snapshot }) {
     return () => window.clearTimeout(t)
   }, [load, snapshot])
 
+  // "Ajustar à largura": a folha acompanha a largura disponível da área central.
+  const hasDoc = doc !== null
+  useEffect(() => {
+    const el = desk.current
+    if (!el) return
+    const measure = () => {
+      const style = getComputedStyle(el)
+      const inner = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+      setFitZoom(Math.min(2, Math.max(0.25, inner / PAGE_PX)))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [hasDoc])
+
   const html = useMemo(() => (doc ? documentHtml(doc) : ''), [doc])
   const pending = useMemo(() => pendencies(snapshot), [snapshot])
+  const scale = zoom === 'fit' ? fitZoom : zoom
+
+  const stepZoom = (dir: 1 | -1) => {
+    const next = dir > 0 ? ZOOM_STEPS.find((z) => z > scale + 0.001) : [...ZOOM_STEPS].reverse().find((z) => z < scale - 0.001)
+    if (next) setZoom(next)
+  }
+
+  const goTo = (id: string) => {
+    desk.current?.querySelector(`[id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }
 
   const run = async (label: string, fn: () => Promise<void>) => {
     setBusy(label)
@@ -112,12 +151,18 @@ export function DocumentPanel({ snapshot }: { snapshot: Snapshot }) {
     toast('success', `Gravado em ${res.file} com ${res.images.length} diagrama(s) — versionável no Git`)
   })
 
-  if (loading && !doc) return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-muted-foreground" /></div>
-  if (error && !doc) {
-    return <EmptyState icon={AlertTriangle} title="Não foi possível gerar o documento" description={error}
-      action={<Button size="sm" icon={RefreshCw} onClick={() => void load()}>Tentar novamente</Button>} />
+  if (!doc) {
+    return (
+      <ViewFrame icon={FileText} title="Documento de Requisitos" meta={snapshot.manifest.project_name}>
+        {loading ? (
+          <div className="flex justify-center py-16"><Loader2 className="animate-spin text-muted-foreground" /></div>
+        ) : (
+          <EmptyState icon={AlertTriangle} title="Não foi possível gerar o documento" description={error ?? undefined}
+            action={<Button size="sm" icon={RefreshCw} onClick={() => void load()}>Tentar novamente</Button>} />
+        )}
+      </ViewFrame>
+    )
   }
-  if (!doc) return null
 
   const counts = {
     rf: snapshot.requirements.requirements.filter((r) => r.type === 'RF').length,
@@ -127,17 +172,21 @@ export function DocumentPanel({ snapshot }: { snapshot: Snapshot }) {
   }
 
   return (
-    <div className="space-y-3">
-      {/* Barra de ações */}
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2 shadow-xs">
-        <FileText size={16} className="text-muted-foreground" />
-        <div className="min-w-0">
-          <p className="text-[13px] font-semibold">{doc.title} — {doc.project}</p>
-          <p className="text-[11.5px] text-muted-foreground">
-            Versão {doc.version} · {doc.date} · {counts.rf} RF · {counts.rnf} RNF · {counts.cdu} casos de uso · {counts.fig} figura(s)
-          </p>
-        </div>
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+    <ViewFrame icon={FileText} title={`${doc.title} — ${doc.project}`}
+      meta={`Versão ${doc.version} · ${doc.date} · ${counts.rf} RF · ${counts.rnf} RNF · ${counts.cdu} casos de uso · ${counts.fig} figura(s)`}
+      bodyClassName="flex overflow-hidden"
+      actions={
+        <>
+          {/* Zoom da folha */}
+          <div className="flex h-7 items-center rounded-md border bg-background">
+            <IconAction label="Afastar" onClick={() => stepZoom(-1)} className="h-full px-1.5"><ZoomOut size={14} /></IconAction>
+            <button type="button" onClick={() => setZoom(zoom === 'fit' ? 1 : 'fit')}
+              title={zoom === 'fit' ? 'Ajustado à largura — clique para 100%' : 'Clique para ajustar à largura'}
+              className="h-full min-w-[4.5rem] border-x px-1.5 text-[11.5px] tabular-nums text-muted-foreground hover:bg-accent hover:text-foreground">
+              {zoom === 'fit' ? `Ajustar · ${Math.round(scale * 100)}%` : `${Math.round(scale * 100)}%`}
+            </button>
+            <IconAction label="Aproximar" onClick={() => stepZoom(1)} className="h-full px-1.5"><ZoomIn size={14} /></IconAction>
+          </div>
           <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => void load()}>Atualizar</Button>
           <Button size="sm" variant="secondary" icon={Settings2} onClick={() => setMetaOpen(true)}>Dados do documento</Button>
           <Button size="sm" variant="secondary" icon={Save} loading={busy === 'save'} onClick={() => void saveToProject()}>Salvar no projeto</Button>
@@ -156,37 +205,59 @@ export function DocumentPanel({ snapshot }: { snapshot: Snapshot }) {
               <DropdownMenuItem onSelect={() => void saveToProject()}><Save />Salvar em docs/ (Markdown + SVGs)</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
+          <Button size="icon" variant={sideOpen ? 'secondary' : 'ghost'} aria-label={sideOpen ? 'Ocultar estrutura e pendências' : 'Mostrar estrutura e pendências'}
+            onClick={() => setSideOpen(!sideOpen)}>
+            <PanelRight size={14} />
+          </Button>
+        </>
+      }>
+      {/* Pré-visualização em "papel" — o mesmo HTML usado no PDF */}
+      <div ref={desk} className="min-w-0 flex-1 overflow-auto bg-muted px-6 py-6 dark:bg-chrome-2">
+        <style>{DOC_CSS}</style>
+        <div className="mx-auto w-[21cm] shadow-md ring-1 ring-black/5" style={{ zoom: scale }}
+          dangerouslySetInnerHTML={{ __html: html }} />
       </div>
 
-      {/* Pendências: o que falta para o documento ficar completo */}
-      {pending.length > 0 ? (
-        <div className="rounded-lg border bg-card shadow-xs">
-          <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] font-medium"
-            onClick={() => setShowPending(!showPending)}>
-            <AlertTriangle size={14} className="text-warning" />
-            {pending.length} ponto(s) para completar o documento
-            <ChevronDown size={14} className={`ml-auto transition-transform ${showPending ? '' : '-rotate-90'}`} />
-          </button>
-          {showPending && (
-            <ul className="list-disc space-y-0.5 border-t px-3 py-2 pl-8 text-[12px] text-muted-foreground">
-              {pending.map((p) => <li key={p}>{p}</li>)}
+      {sideOpen && (
+        <aside className="flex w-64 shrink-0 flex-col overflow-y-auto border-l bg-chrome">
+          <SideTitle icon={pending.length ? AlertTriangle : CheckCircle2}
+            className={pending.length ? 'text-warning' : 'text-success'}>
+            {pending.length ? `Pendências (${pending.length})` : 'Documento completo'}
+          </SideTitle>
+          {pending.length > 0 ? (
+            <ul className="space-y-1.5 px-3 py-2.5 text-[12px] leading-snug text-muted-foreground">
+              {pending.map((p) => (
+                <li key={p} className="flex gap-1.5"><span className="mt-[7px] size-1 shrink-0 rounded-full bg-warning" />{p}</li>
+              ))}
             </ul>
+          ) : (
+            <p className="px-3 py-2.5 text-[12px] text-muted-foreground">Todas as seções têm conteúdo.</p>
           )}
-        </div>
-      ) : (
-        <p className="flex items-center gap-2 px-1 text-[12px] text-muted-foreground">
-          <CheckCircle2 size={14} className="text-success" /> Documento completo: todas as seções têm conteúdo.
-        </p>
+
+          <SideTitle icon={ListTree}>Estrutura</SideTitle>
+          <nav className="py-1 text-[12px]">
+            {doc.toc.map((t) => (
+              <button key={t.id} type="button" onClick={() => goTo(t.id)}
+                className={cn('flex w-full gap-1.5 truncate py-[3px] pr-2 text-left hover:bg-accent',
+                  t.level === 1 ? 'font-semibold text-foreground' : 'text-muted-foreground hover:text-foreground')}
+                style={{ paddingLeft: 12 + (t.level - 1) * 12 }}>
+                <span className="shrink-0 tabular-nums">{t.number}</span>
+                <span className="truncate">{t.title}</span>
+              </button>
+            ))}
+          </nav>
+        </aside>
       )}
 
-      {/* Pré-visualização em "papel" — o mesmo HTML usado no PDF */}
-      <div className="overflow-x-auto rounded-lg border bg-muted/60 p-4">
-        <style>{DOC_CSS}</style>
-        <div className="mx-auto w-full max-w-[21cm] shadow-md" dangerouslySetInnerHTML={{ __html: html }} />
-      </div>
-
       <DocumentMetaEditor open={metaOpen} onClose={() => setMetaOpen(false)} snapshot={snapshot} />
-    </div>
+    </ViewFrame>
+  )
+}
+
+function SideTitle({ icon: Icon, className, children }: { icon: typeof ListTree; className?: string; children: React.ReactNode }) {
+  return (
+    <p className="sticky top-0 z-10 flex h-7 shrink-0 items-center gap-1.5 border-b bg-panel-header px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+      <Icon size={13} className={className} />{children}
+    </p>
   )
 }

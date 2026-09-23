@@ -1,12 +1,13 @@
 // Painel de dimensionamento e precificação (RF011–RF014).
 // Os gráficos são SVG inline: nenhuma biblioteca extra entra no bundle embutido.
 
-import { Calculator, Cloud, Coins, FileSignature, Settings2, Timer } from 'lucide-react'
+import { Calculator, Cloud, Coins, FileSignature, Receipt, Settings2, Timer } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../../lib/api'
 import { hours as fmtHours, money } from '../../lib/format'
 import { nodeMeta } from '../../lib/nodeMeta'
 import type { Estimate, PricingConfig, Snapshot } from '../../lib/types'
+import { ViewFrame } from '../shell/ViewFrame'
 import { Button, Card, Field, Input, Modal, Spinner, Stat, useToast } from '../ui'
 
 const TIER_LABEL: Record<string, string> = {
@@ -46,35 +47,34 @@ export function PricingView({ snapshot }: { snapshot: Snapshot }) {
       .sort((a, b) => b[1] - a[1])
   }, [estimate])
 
-  if (loading && !estimate) return <Spinner label="Calculando estimativa…" />
-  if (!estimate) return null
+  if (!estimate) {
+    return (
+      <ViewFrame icon={Receipt} title="Dimensionamento & Precificação">
+        {loading ? <Spinner label="Calculando estimativa…" /> : null}
+      </ViewFrame>
+    )
+  }
 
   const cur = estimate.currency
   const maxTier = Math.max(...tierData.map(([, v]) => v), 1)
 
   return (
-    // @container: o layout reage à largura da área central (que perde espaço
-    // para Toolbox e painéis laterais), não à largura da janela.
-    <div className="@container h-full overflow-y-auto">
-    <div className="mx-auto w-full max-w-6xl px-5 py-5">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-app">Dimensionamento & Precificação</h2>
-          <p className="text-xs text-muted-app">
-            Derivado de {snapshot.diagram.nodes.length} componentes, {snapshot.diagram.edges.length} integrações
-            e {snapshot.use_cases.length} casos de uso.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+    // O corpo do ViewFrame é um @container: o layout reage à largura da área
+    // central (que perde espaço para Toolbox e painéis laterais), não à janela.
+    <ViewFrame icon={Receipt} title="Dimensionamento & Precificação"
+      meta={`Derivado de ${snapshot.diagram.nodes.length} componentes, ${snapshot.diagram.edges.length} integrações e ${snapshot.use_cases.length} casos de uso`}
+      actions={
+        <>
           <label className="flex items-center gap-2 text-xs text-muted-app">
             Margem
             <input type="range" min={0} max={60} step={5} value={margin}
               onChange={(e) => setMargin(Number(e.target.value))} className="w-28 accent-primary" />
             <span className="w-9 text-right font-semibold tabular-nums text-app">{margin}%</span>
           </label>
-          <Button size="sm" variant="ghost" icon={Settings2} onClick={() => setConfigOpen(true)}>Tabela de preços</Button>
-        </div>
-      </div>
+          <Button size="sm" variant="secondary" icon={Settings2} onClick={() => setConfigOpen(true)}>Tabela de preços</Button>
+        </>
+      }>
+    <div className="p-4">
 
       <div className="mb-4 grid gap-3 @lg:grid-cols-2 @5xl:grid-cols-4">
         <Stat label="Esforço total" value={fmtHours(estimate.total_hours)}
@@ -194,7 +194,7 @@ export function PricingView({ snapshot }: { snapshot: Snapshot }) {
 
       <PricingConfigModal open={configOpen} onClose={() => setConfigOpen(false)} config={snapshot.pricing} />
     </div>
-    </div>
+    </ViewFrame>
   )
 }
 

@@ -4,12 +4,13 @@
 // aqui; mudar o status pela interface tem exatamente o mesmo efeito que a IA
 // chamar `mark_task_status`.
 
-import { Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Lock, PlayCircle, XCircle } from 'lucide-react'
+import { Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Lock, PlayCircle, Workflow, XCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api } from '../../lib/api'
 import { STATUS_META } from '../../lib/nodeMeta'
 import type { Snapshot, Task, TaskStatus } from '../../lib/types'
-import { Badge, Button, Card, EmptyState, Select, useToast } from '../ui'
+import { ViewFrame } from '../shell/ViewFrame'
+import { Badge, Button, EmptyState, Select, useToast } from '../ui'
 
 const TIER_LABEL: Record<string, string> = {
   data: 'Data Tier', domain: 'Domain Tier', backend: 'Service Tier',
@@ -48,46 +49,38 @@ export function TasksView({ snapshot, onGeneratePRD }: { snapshot: Snapshot; onG
 
   if (board.tasks.length === 0) {
     return (
-      <div className="mx-auto h-full w-full max-w-5xl px-5 py-5">
-        <Card>
-          <EmptyState icon={Bot} title="Nenhuma fila de implementação"
-            description="Gere o AI-PRD para compilar a arquitetura em tarefas ordenadas topologicamente, com dependências e critérios de aceite verificáveis."
-            action={<Button variant="primary" icon={Bot} onClick={onGeneratePRD}>Gerar AI-PRD</Button>} />
-        </Card>
-      </div>
+      <ViewFrame icon={Workflow} title="Fila de Implementação" meta="Compilada a partir do AI-PRD">
+        <EmptyState icon={Bot} title="Nenhuma fila de implementação"
+          description="Gere o AI-PRD para compilar a arquitetura em tarefas ordenadas topologicamente, com dependências e critérios de aceite verificáveis."
+          action={<Button variant="primary" icon={Bot} onClick={onGeneratePRD}>Gerar AI-PRD</Button>} />
+      </ViewFrame>
     )
   }
 
   return (
-    <div className="mx-auto h-full w-full max-w-5xl overflow-y-auto px-5 py-5">
-      <div className="mb-4 surface rounded-lg border border-app p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-bold text-app">Fila de Implementação</h2>
-            <p className="text-xs text-muted-app">
-              {board.tasks.length} tarefas · stack {board.target_stack || 'não definido'} · hash{' '}
-              <code className="font-mono text-[11px]">{board.source_hash}</code>
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} className="w-40">
-              <option value="all">Todas</option>
-              <option value="pending">Pendentes</option>
-              <option value="in_progress">Em andamento</option>
-              <option value="completed">Concluídas</option>
-              <option value="blocked">Bloqueadas</option>
-            </Select>
-            <Button size="sm" variant="ghost" icon={Bot} onClick={onGeneratePRD}>Recompilar</Button>
-          </div>
+    <ViewFrame icon={Workflow} title="Fila de Implementação"
+      meta={<>{board.tasks.length} tarefas · stack {board.target_stack || 'não definido'} · hash{' '}
+        <code className="font-mono text-[11px]">{board.source_hash}</code></>}
+      actions={
+        <>
+          <Select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} className="h-7 w-40 text-[12px]">
+            <option value="all">Todas</option>
+            <option value="pending">Pendentes</option>
+            <option value="in_progress">Em andamento</option>
+            <option value="completed">Concluídas</option>
+            <option value="blocked">Bloqueadas</option>
+          </Select>
+          <Button size="sm" variant="secondary" icon={Bot} onClick={onGeneratePRD}>Recompilar</Button>
+        </>
+      }>
+    <div className="p-4">
+      <div className="mb-4 flex items-center gap-3">
+        <div className="h-2 flex-1 overflow-hidden rounded-full surface-3">
+          <div className="h-full rounded-full bg-success transition-all duration-700" style={{ width: `${progress}%` }} />
         </div>
-        <div className="mt-3 flex items-center gap-3">
-          <div className="h-2 flex-1 overflow-hidden rounded-full surface-3">
-            <div className="h-full rounded-full bg-success transition-all duration-700" style={{ width: `${progress}%` }} />
-          </div>
-          <span className="w-24 text-right text-xs font-semibold tabular-nums text-app">
-            {completed}/{board.tasks.length} · {progress}%
-          </span>
-        </div>
+        <span className="w-24 text-right text-xs font-semibold tabular-nums text-app">
+          {completed}/{board.tasks.length} · {progress}%
+        </span>
       </div>
 
       <ol className="space-y-2">
@@ -183,6 +176,7 @@ export function TasksView({ snapshot, onGeneratePRD }: { snapshot: Snapshot; onG
         })}
       </ol>
     </div>
+    </ViewFrame>
   )
 }
 

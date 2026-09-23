@@ -2,6 +2,7 @@ package mermaid
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -16,13 +17,25 @@ import (
 // JSON → Mermaid: o JSON continua sendo a fonte da verdade (posições, tamanhos
 // e metadados que o Mermaid não representa).
 
-// mermaidReserved são palavras que quebram o parser quando usadas como id.
+// mermaidReserved são palavras que quebram o parser quando usadas como id em
+// algum dos tipos de diagrama (levantadas contra o Mermaid 11.17.2). A lista é
+// única para todos os tipos: um sufixo `_` a mais nunca atrapalha.
 var mermaidReserved = map[string]bool{
+	// flowchart
 	"end": true, "graph": true, "flowchart": true, "subgraph": true, "class": true,
-	"state": true, "note": true, "style": true, "click": true, "default": true,
+	"classdef": true, "click": true, "style": true, "linkstyle": true, "call": true,
+	"href": true, "interpolate": true, "direction": true, "default": true,
+	// classDiagram ("o" é lido como a ponta de agregação)
+	"callback": true, "cssclass": true, "link": true, "namespace": true, "note": true, "o": true,
+	// sequenceDiagram
 	"participant": true, "actor": true, "loop": true, "alt": true, "opt": true,
 	"par": true, "and": true, "else": true, "rect": true, "critical": true,
-	"break": true, "direction": true, "namespace": true, "link": true, "classdef": true,
+	"break": true, "option": true, "box": true, "create": true, "destroy": true,
+	"activate": true, "deactivate": true, "autonumber": true, "over": true,
+	"title": true, "links": true, "properties": true, "details": true,
+	"acctitle": true, "accdescr": true, "sequencediagram": true,
+	// stateDiagram-v2
+	"state": true, "as": true, "scale": true, "statediagram": true,
 }
 
 // umlIDs atribui a cada elemento um id Mermaid seguro e legível: o slug do
@@ -58,9 +71,36 @@ func umlIDs(d *model.UMLDiagram) map[string]string {
 
 // umlText sanitiza texto livre para rótulos Mermaid.
 func umlText(s string) string {
-	r := strings.NewReplacer(`"`, `'`, "\r", "", "\n", " ", ";", ",", "#", "")
-	return strings.TrimSpace(r.Replace(s))
+	return strings.TrimSpace(noTagOpen(noDirective(umlReplacer.Replace(s))))
 }
+
+var umlReplacer = strings.NewReplacer(`"`, `'`, "`", "'", "\r", "", "\n", " ", ";", ",", "#", "")
+
+// umlTextOr devolve o texto sanitizado ou, se ele ficar vazio, o fallback (o id
+// Mermaid do elemento): rótulos vazios como `([""])` e `state "" as x` são
+// erro de sintaxe no Mermaid 11.
+func umlTextOr(s, fallback string) string {
+	if t := umlText(s); t != "" {
+		return t
+	}
+	return fallback
+}
+
+// Os códigos de entidade (#123;) são decodificados pelo próprio Mermaid, então
+// o texto aparece igual ao original sem confundir o parser.
+var (
+	// Chaves fecham o corpo da classe; um ")" sem "(" derruba o parser de
+	// membros ("reading 'startsWith'"), assim como "<x", que o sanitizador de
+	// HTML apaga até o fim da linha. Os parênteses estruturais das operações
+	// são escritos por fora deste escape.
+	classEntities = strings.NewReplacer("{", "#123;", "}", "#125;", "(", "#40;", ")", "#41;", "<", "#60;", ">", "#62;")
+	// ":" separa o rótulo da relação (classes) e, nos estados, o texto de notas,
+	// ações e transições (um ":" no fim ou "::" são erro de sintaxe).
+	colonEntity = strings.NewReplacer(":", "#58;")
+)
+
+// classText sanitiza nomes, tipos, literais e estereótipos do classDiagram.
+func classText(s string) string { return classEntities.Replace(umlText(s)) }
 
 // sortedElements devolve os elementos em ordem estável (y, x, id).
 func sortedElements(els []model.UMLElement) []model.UMLElement {
@@ -160,15 +200,18 @@ func noteTargets(d *model.UMLDiagram) map[string][]string {
 
 func mermaidMember(m model.UMLMember, operation bool) string {
 	var s strings.Builder
-	s.WriteString(m.Visibility)
-	s.WriteString(umlText(m.Name))
+	// Visibilidade fora de + - # ~ (JSON editado à mão) seria lida como texto.
+	if slices.Contains(model.UMLVisibilities, m.Visibility) {
+		s.WriteString(m.Visibility)
+	}
+	s.WriteString(classText(m.Name))
 	if operation {
-		s.WriteString("(" + umlText(m.Params) + ")")
-		if m.Type != "" {
-			s.WriteString(" " + umlText(m.Type))
+		s.WriteString("(" + classText(m.Params) + ")")
+		if t := classText(m.Type); t != "" {
+			s.WriteString(" " + t)
 		}
-	} else if m.Type != "" {
-		s.WriteString(": " + umlText(m.Type))
+	} else if t := classText(m.Type); t != "" {
+		s.WriteString(": " + t)
 	}
 	if m.Static {
 		s.WriteString("$")
@@ -180,6 +223,13 @@ func mermaidMember(m model.UMLMember, operation bool) string {
 
 func exportClass(b *strings.Builder, d *model.UMLDiagram) {
 	b.WriteString("classDiagram\n")
+	// Um classDiagram sem nenhuma instrução é erro de sintaxe no Mermaid.
+	empty := b.Len()
+	defer func() {
+		if b.Len() == empty {
+			b.WriteString("    direction TB\n")
+		}
+	}()
 	ids := umlIDs(d)
 	children := childrenOf(d, "package")
 
@@ -195,8 +245,8 @@ func exportClass(b *strings.Builder, d *model.UMLDiagram) {
 			annotation = "interface"
 		case e.Type == "enum":
 			annotation = "enumeration"
-		case e.Stereotype != "":
-			annotation = umlText(e.Stereotype)
+		case classText(e.Stereotype) != "":
+			annotation = classText(e.Stereotype)
 		case e.Abstract:
 			annotation = "abstract"
 		}
@@ -205,15 +255,20 @@ func exportClass(b *strings.Builder, d *model.UMLDiagram) {
 			lines = append(lines, "<<"+annotation+">>")
 		}
 		for _, lit := range e.Literals {
-			if lit = umlText(lit); lit != "" {
+			if lit = classText(lit); lit != "" {
 				lines = append(lines, lit)
 			}
 		}
+		// Membro sem nome é inválido no modelo; "()" sem nome derruba o parser.
 		for _, m := range e.Attributes {
-			lines = append(lines, mermaidMember(m, false))
+			if classText(m.Name) != "" {
+				lines = append(lines, mermaidMember(m, false))
+			}
 		}
 		for _, m := range e.Operations {
-			lines = append(lines, mermaidMember(m, true))
+			if classText(m.Name) != "" {
+				lines = append(lines, mermaidMember(m, true))
+			}
 		}
 		if len(lines) == 0 {
 			fmt.Fprintf(b, "%sclass %s\n", indent, head)
@@ -298,16 +353,16 @@ func exportClass(b *strings.Builder, d *model.UMLDiagram) {
 			leftMul, rightMul = r.TargetMultiplicity, r.SourceMultiplicity
 		}
 		line := "    " + left
-		if leftMul != "" {
-			line += fmt.Sprintf(" \"%s\"", umlText(leftMul))
+		if m := umlText(leftMul); m != "" {
+			line += fmt.Sprintf(" \"%s\"", m)
 		}
 		line += " " + arrow
-		if rightMul != "" {
-			line += fmt.Sprintf(" \"%s\"", umlText(rightMul))
+		if m := umlText(rightMul); m != "" {
+			line += fmt.Sprintf(" \"%s\"", m)
 		}
 		line += " " + right
 		if name := umlText(r.Name); name != "" {
-			line += " : " + name
+			line += " : " + colonEntity.Replace(name)
 		}
 		b.WriteString(line + "\n")
 	}
@@ -317,7 +372,11 @@ func exportClass(b *strings.Builder, d *model.UMLDiagram) {
 		if e.Type != "note" {
 			continue
 		}
+		// `note ""` é erro de sintaxe; nota vazia não tem o que mostrar.
 		text := noteText(e)
+		if text == "" {
+			continue
+		}
 		if len(targets[e.ID]) == 0 {
 			fmt.Fprintf(b, "    note \"%s\"\n", text)
 			continue
@@ -356,8 +415,8 @@ func exportSequence(b *strings.Builder, d *model.UMLDiagram) {
 		if l.LifelineKind == "actor" {
 			keyword = "actor"
 		}
-		label := umlText(l.Name)
-		if l.Stereotype != "" {
+		label := umlTextOr(l.Name, ids[l.ID])
+		if umlText(l.Stereotype) != "" {
 			label = "«" + umlText(l.Stereotype) + "» " + label
 		} else if l.LifelineKind != "" && l.LifelineKind != "participant" && l.LifelineKind != "actor" {
 			label = "«" + l.LifelineKind + "» " + label
@@ -376,7 +435,7 @@ func exportSequence(b *strings.Builder, d *model.UMLDiagram) {
 			if e.Type != "fragment" {
 				continue
 			}
-			text := e.Operator
+			text := umlText(e.Operator)
 			if text == "" {
 				text = "alt"
 			}
@@ -422,7 +481,7 @@ func exportSequence(b *strings.Builder, d *model.UMLDiagram) {
 
 	targets := noteTargets(d)
 	for _, e := range sortedElements(d.Elements) {
-		if e.Type != "note" {
+		if e.Type != "note" || noteText(e) == "" {
 			continue
 		}
 		over := []string{}
@@ -493,7 +552,7 @@ func exportState(b *strings.Builder, d *model.UMLDiagram) {
 			id := ids[e.ID]
 			switch e.Type {
 			case "state":
-				fmt.Fprintf(b, "%sstate \"%s\" as %s\n", indent, umlText(e.Name), id)
+				fmt.Fprintf(b, "%sstate \"%s\" as %s\n", indent, umlTextOr(e.Name, id), id)
 				composite := len(children[e.ID]) > 0 || len(byScope[e.ID]) > 0
 				if composite {
 					fmt.Fprintf(b, "%sstate %s {\n", indent, id)
@@ -502,7 +561,7 @@ func exportState(b *strings.Builder, d *model.UMLDiagram) {
 				}
 				actions := []string{}
 				for _, act := range [][2]string{{"entry", e.Entry}, {"do", e.Do}, {"exit", e.Exit}} {
-					if t := umlText(act[1]); t != "" {
+					if t := colonEntity.Replace(umlText(act[1])); t != "" {
 						actions = append(actions, act[0]+" / "+t)
 					}
 				}
@@ -538,7 +597,7 @@ func exportState(b *strings.Builder, d *model.UMLDiagram) {
 				label = umlText(r.Name)
 			}
 			if label != "" {
-				line += " : " + label
+				line += " : " + colonEntity.Replace(label)
 			}
 			b.WriteString(line + "\n")
 		}
@@ -550,9 +609,13 @@ func exportState(b *strings.Builder, d *model.UMLDiagram) {
 		if e.Type != "note" {
 			continue
 		}
+		text := colonEntity.Replace(noteText(e))
+		if text == "" {
+			continue
+		}
 		for _, t := range targets[e.ID] {
 			if el := d.ElementByID(t); el != nil && el.Type == "state" {
-				fmt.Fprintf(b, "    note right of %s : %s\n", ids[t], noteText(e))
+				fmt.Fprintf(b, "    note right of %s : %s\n", ids[t], text)
 			}
 		}
 	}
@@ -571,7 +634,7 @@ func exportUseCase(b *strings.Builder, d *model.UMLDiagram) {
 	writeScope = func(parent, indent string) {
 		for _, e := range children[parent] {
 			id := ids[e.ID]
-			name := umlText(e.Name)
+			name := umlTextOr(e.Name, id)
 			switch e.Type {
 			case "actor":
 				fmt.Fprintf(b, "%s%s[\"👤 %s\"]\n", indent, id, name)
@@ -598,6 +661,7 @@ func exportUseCase(b *strings.Builder, d *model.UMLDiagram) {
 		if src == "" || dst == "" {
 			continue
 		}
+		// Rótulos livres vão entre aspas: `---|x (y)|` é erro de sintaxe.
 		name := umlText(r.Name)
 		switch r.Type {
 		case "include":
@@ -608,7 +672,7 @@ func exportUseCase(b *strings.Builder, d *model.UMLDiagram) {
 			fmt.Fprintf(b, "    %s --> %s\n", src, dst)
 		case "dependency":
 			if name != "" {
-				fmt.Fprintf(b, "    %s -. %s .-> %s\n", src, name, dst)
+				fmt.Fprintf(b, "    %s -. \"%s\" .-> %s\n", src, name, dst)
 			} else {
 				fmt.Fprintf(b, "    %s -.-> %s\n", src, dst)
 			}
@@ -616,7 +680,7 @@ func exportUseCase(b *strings.Builder, d *model.UMLDiagram) {
 			fmt.Fprintf(b, "    %s -.- %s\n", src, dst)
 		default:
 			if name != "" {
-				fmt.Fprintf(b, "    %s ---|%s| %s\n", src, name, dst)
+				fmt.Fprintf(b, "    %s ---|\"%s\"| %s\n", src, name, dst)
 			} else {
 				fmt.Fprintf(b, "    %s --- %s\n", src, dst)
 			}

@@ -38,6 +38,14 @@ var shapeType = map[string]string{
 
 var reSafeID = regexp.MustCompile(`[^A-Za-z0-9_]`)
 
+// flowchartReserved são palavras que o lexer do flowchart (Mermaid 11) lê como
+// comando e que quebram o parser quando usadas como id de nó ou subgraph.
+var flowchartReserved = map[string]bool{
+	"end": true, "graph": true, "flowchart": true, "subgraph": true, "class": true,
+	"classdef": true, "click": true, "style": true, "linkstyle": true, "call": true,
+	"href": true, "interpolate": true,
+}
+
 func safeID(id string) string {
 	s := reSafeID.ReplaceAllString(id, "_")
 	if s == "" {
@@ -46,12 +54,43 @@ func safeID(id string) string {
 	if s[0] >= '0' && s[0] <= '9' {
 		s = "n" + s
 	}
+	if flowchartReserved[strings.ToLower(s)] {
+		s += "_"
+	}
 	return s
 }
 
+// A crase logo após a aspa abre uma string Markdown ("`…`") que precisa fechar.
+var labelReplacer = strings.NewReplacer(`"`, `'`, "`", "'", "\r", "", "\n", " ", "|", "/")
+
 func escapeLabel(s string) string {
-	r := strings.NewReplacer(`"`, `'`, "\n", " ", "|", "/")
-	return strings.TrimSpace(r.Replace(s))
+	return strings.TrimSpace(noTagOpen(noDirective(labelReplacer.Replace(s))))
+}
+
+// reTagOpen casa "<" seguido de letra. O Mermaid reescreve `<tag … ="…" … >`
+// antes de qualquer parsing — atravessando linhas —, o que troca aspas de
+// rótulos seguintes por apóstrofos e quebra o diagrama. O código de entidade
+// #60; é decodificado de volta para "<" na renderização.
+var reTagOpen = regexp.MustCompile(`<(\w)`)
+
+func noTagOpen(s string) string { return reTagOpen.ReplaceAllString(s, "#60;$1") }
+
+// noDirective reduz toda sequência de "%" a um só: "%%{…}%%" é lido como
+// diretiva de configuração em qualquer ponto do texto, até dentro de rótulos.
+func noDirective(s string) string {
+	for strings.Contains(s, "%%") {
+		s = strings.ReplaceAll(s, "%%", "%")
+	}
+	return s
+}
+
+// labelOr devolve o rótulo escapado ou, se ele ficar vazio, o fallback: o
+// Mermaid 11 recusa `[""]`, `([""])` e `|""|` ("Syntax error in text").
+func labelOr(label, fallback string) string {
+	if l := escapeLabel(label); l != "" {
+		return l
+	}
+	return escapeLabel(fallback)
 }
 
 // groupChildren devolve, para cada nó de grupo, os ids contidos geometricamente.
@@ -112,9 +151,10 @@ func Export(d *model.Diagram) string {
 		if !ok {
 			shape = shapes["compute"]
 		}
-		label := escapeLabel(n.Data.Label)
-		if n.Data.Technology != "" {
-			label += "<br/><small>" + escapeLabel(n.Data.Technology) + "</small>"
+		// Nó sem nome mostra o id, que é o que o identifica no JSON.
+		label := labelOr(n.Data.Label, n.ID)
+		if tech := escapeLabel(n.Data.Technology); tech != "" {
+			label += "<br/><small>" + tech + "</small>"
 		}
 		fmt.Fprintf(&b, "%s%s%s%s%s\n", indent, safeID(n.ID), shape[0], label, shape[1])
 	}
@@ -128,7 +168,7 @@ func Export(d *model.Diagram) string {
 	}
 	for _, gid := range groupIDs {
 		g := d.NodeByID(gid)
-		fmt.Fprintf(&b, "    subgraph %s[\"%s\"]\n", safeID(gid), escapeLabel(g.Data.Label))
+		fmt.Fprintf(&b, "    subgraph %s[\"%s\"]\n", safeID(gid), labelOr(g.Data.Label, gid))
 		ids := children[gid]
 		sort.Strings(ids)
 		for _, id := range ids {
@@ -165,10 +205,11 @@ func Export(d *model.Diagram) string {
 				label = strings.TrimSpace(label + " :" + strconv.Itoa(e.Data.Port))
 			}
 		}
-		if label == "" {
+		// O teste é feito depois do escape: um rótulo só de espaços viraria `|""|`.
+		if label = escapeLabel(label); label == "" {
 			fmt.Fprintf(&b, "    %s %s %s\n", safeID(e.Source), arrow, safeID(e.Target))
 		} else {
-			fmt.Fprintf(&b, "    %s %s|\"%s\"| %s\n", safeID(e.Source), arrow, escapeLabel(label), safeID(e.Target))
+			fmt.Fprintf(&b, "    %s %s|\"%s\"| %s\n", safeID(e.Source), arrow, label, safeID(e.Target))
 		}
 	}
 
@@ -361,7 +402,7 @@ func Import(src string, base *model.Diagram) (*model.Diagram, error) {
 		arrows := []rawEdge{}
 		protected := reArrow.ReplaceAllStringFunc(line, func(match string) string {
 			sub := reArrow.FindStringSubmatch(match)
-			arrows = append(arrows, rawEdge{arrow: sub[1], label: strings.TrimSpace(sub[2])})
+			arrows = append(arrows, rawEdge{arrow: sub[1], label: strings.TrimSpace(strings.ReplaceAll(sub[2], "#60;", "<"))})
 			return fmt.Sprintf("\x00%d\x00", len(arrows)-1)
 		})
 
@@ -371,9 +412,12 @@ func Import(src string, base *model.Diagram) (*model.Diagram, error) {
 			id, open, body := m[1], m[2]+m[3], m[4]
 			n := ensure(id)
 			label := reBRTag.ReplaceAllString(body, "\n")
-			label = reHTMLTag.ReplaceAllString(label, "")
+			label = strings.ReplaceAll(reHTMLTag.ReplaceAllString(label, ""), "#60;", "<")
 			parts := strings.SplitN(label, "\n", 2)
-			n.label = strings.TrimSpace(strings.Trim(parts[0], `"`))
+			// `id[" "]` não pode gerar um componente sem nome: fica o id.
+			if l := strings.TrimSpace(strings.Trim(parts[0], `"`)); l != "" {
+				n.label = l
+			}
 			if len(parts) > 1 {
 				n.tech = strings.TrimSpace(parts[1])
 			}

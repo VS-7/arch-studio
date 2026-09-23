@@ -2,9 +2,9 @@
 // importar um snippet colado (C4, flowchart ou graph).
 
 import { ArrowDownToLine, Copy, Import } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import mermaid from 'mermaid'
+import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
+import { mermaidErrorMessage, renderMermaid } from '../../lib/mermaid'
 import type { Snapshot } from '../../lib/types'
 import { Button, Modal, Textarea, useToast } from '../ui'
 
@@ -15,25 +15,22 @@ export function MermaidPanel({ open, onClose, snapshot }: {
   const [tab, setTab] = useState<'view' | 'import'>('view')
   const [source, setSource] = useState('')
   const [importing, setImporting] = useState(false)
-  const preview = useRef<HTMLDivElement>(null)
+  // Estado (e não ref): o conteúdo do diálogo monta depois do efeito de abertura.
+  const [preview, setPreview] = useState<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    if (!open || tab !== 'view' || !preview.current) return
-    const dark = document.documentElement.classList.contains('dark')
-    mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default', securityLevel: 'strict' })
+    if (!open || tab !== 'view' || !preview) return
     let cancelled = false
     void (async () => {
       try {
-        const { svg } = await mermaid.render(`mmd-panel-${Date.now()}`, snapshot.mermaid || 'flowchart LR\n  vazio["Sem componentes"]')
-        if (!cancelled && preview.current) preview.current.innerHTML = svg
+        const svg = await renderMermaid(snapshot.mermaid || 'flowchart LR\n  vazio["Sem componentes"]')
+        if (!cancelled) preview.innerHTML = svg
       } catch (err) {
-        if (!cancelled && preview.current) {
-          preview.current.innerHTML = `<p class="text-xs text-destructive">Mermaid inválido: ${(err as Error).message}</p>`
-        }
+        if (!cancelled) preview.textContent = `Mermaid inválido: ${mermaidErrorMessage(err)}`
       }
     })()
     return () => { cancelled = true }
-  }, [open, tab, snapshot.mermaid])
+  }, [open, tab, snapshot.mermaid, preview])
 
   const doImport = async () => {
     if (!source.trim()) return
@@ -88,7 +85,7 @@ export function MermaidPanel({ open, onClose, snapshot }: {
 
       {tab === 'view' ? (
         <div className="space-y-3">
-          <div ref={preview} className="overflow-x-auto rounded-lg border border-app p-4" />
+          <div ref={setPreview} className="overflow-x-auto rounded-lg border border-app p-4 text-xs text-muted-foreground [&_svg]:mx-auto" />
           <pre className="max-h-56 overflow-auto rounded-lg surface-3 p-3 font-mono text-[11px] leading-relaxed text-muted-app">
             {snapshot.mermaid || '// diagrama vazio'}
           </pre>

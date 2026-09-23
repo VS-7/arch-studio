@@ -167,3 +167,112 @@ func TestExportUMLCasosDeUso(t *testing.T) {
 		}
 	}
 }
+
+// edgeUML monta, para cada tipo, um diagrama com textos que já quebraram o
+// parser do Mermaid 11: nomes vazios, palavras reservadas como id, chaves e
+// parênteses em membros, ":" em rótulos e notas vazias.
+func edgeUML() []*model.UMLDiagram {
+	class := model.NewUMLDiagram("classes", model.UMLKindClass, "Classes")
+	class.Elements = []model.UMLElement{
+		{ID: "el-o", Type: "class", Name: "O"},
+		{ID: "el-note-cls", Type: "class", Name: "Note",
+			Stereotype: "entity {x}",
+			Attributes: []model.UMLMember{{Name: "preco", Type: "Decimal(10,2)", Visibility: "#"}, {Name: "z)", Type: "q"}, {Name: "mapa", Type: "Map{}", Visibility: "{"}},
+			Operations: []model.UMLMember{{Name: "run", Params: "cb: () => void", Type: "Promise{T}"}}},
+		{ID: "el-enum", Type: "enum", Name: "Status", Literals: []string{"A { }", "B)"}},
+		{ID: "el-callback", Type: "interface", Name: "callback"},
+		{ID: "el-n1", Type: "note"},
+		{ID: "el-n2", Type: "note", Documentation: "x : y"},
+	}
+	class.Relations = []model.UMLRelation{
+		{ID: "r1", Type: "association", Source: "el-o", Target: "el-note-cls", Name: "tem : muitos", SourceMultiplicity: " ", TargetMultiplicity: "0..*"},
+		{ID: "r2", Type: "note_link", Source: "el-n1", Target: "el-o"},
+		{ID: "r3", Type: "note_link", Source: "el-n2", Target: "el-callback"},
+	}
+
+	seq := model.NewUMLDiagram("sequencia", model.UMLKindSequence, "Sequência")
+	seq.Elements = []model.UMLElement{
+		{ID: "el-box", Type: "lifeline", Name: "Box", Position: model.Position{X: 0}},
+		{ID: "el-sem-nome", Type: "lifeline", Position: model.Position{X: 100}},
+		{ID: "el-db", Type: "lifeline", LifelineKind: "database", Position: model.Position{X: 200}},
+		{ID: "el-frag", Type: "fragment", Operator: "alt;#", Guard: "x: 1"},
+		{ID: "el-nota", Type: "note"},
+	}
+	seq.Relations = []model.UMLRelation{
+		{ID: "m1", Type: "message", Source: "el-box", Target: "el-sem-nome", Name: "a : b ; c", Order: 1},
+		{ID: "m2", Type: "message", Source: "el-sem-nome", Target: "el-db", Order: 2},
+		{ID: "n1", Type: "note_link", Source: "el-nota", Target: "el-box"},
+	}
+
+	state := model.NewUMLDiagram("estados", model.UMLKindState, "Estados")
+	state.Elements = []model.UMLElement{
+		{ID: "i", Type: "initial"},
+		{ID: "el-note", Type: "state", Name: "", Entry: "x : y"},
+		{ID: "el-scale", Type: "state", Name: "Scale", Do: "a : b"},
+		{ID: "el-inner", Type: "state", Name: "Dentro", ParentID: "el-scale"},
+		{ID: "el-ch", Type: "choice", Name: "state"},
+		{ID: "el-nota", Type: "note", Documentation: "hora: 10:00"},
+		{ID: "el-nota-vazia", Type: "note"},
+	}
+	state.Relations = []model.UMLRelation{
+		{ID: "t1", Type: "transition", Source: "i", Target: "el-note", Trigger: "go : now"},
+		{ID: "t2", Type: "transition", Source: "el-note", Target: "el-ch"},
+		{ID: "t3", Type: "transition", Source: "el-ch", Target: "el-scale", Guard: "ok"},
+		{ID: "n1", Type: "note_link", Source: "el-nota", Target: "el-note"},
+		{ID: "n2", Type: "note_link", Source: "el-nota-vazia", Target: "el-scale"},
+	}
+
+	uc := model.NewUMLDiagram("casos", model.UMLKindUseCase, "Casos")
+	uc.Elements = []model.UMLElement{
+		{ID: "el-sis", Type: "boundary"},
+		{ID: "el-ator", Type: "actor", Name: "Click"},
+		{ID: "el-uc", Type: "usecase", ParentID: "el-sis"},
+		{ID: "el-uc2", Type: "usecase", Name: "Pagar (cartão)", ParentID: "el-sis"},
+		{ID: "el-o", Type: "usecase", Name: "o", ParentID: "el-sis"},
+	}
+	uc.Relations = []model.UMLRelation{
+		{ID: "r1", Type: "association", Source: "el-ator", Target: "el-uc", Name: "usa (sempre) | às vezes"},
+		{ID: "r2", Type: "dependency", Source: "el-uc", Target: "el-uc2", Name: "depende [x] {y}"},
+		{ID: "r3", Type: "association", Source: "el-ator", Target: "el-o"},
+	}
+
+	return []*model.UMLDiagram{class, seq, state, uc, model.NewUMLDiagram("vazio", model.UMLKindClass, "Vazio")}
+}
+
+func TestExportUMLTextosProblematicos(t *testing.T) {
+	var out strings.Builder
+	for _, d := range edgeUML() {
+		out.WriteString(ExportUML(d))
+	}
+	s := out.String()
+	for _, bad := range []string{
+		`[""]`, `([""])`, `state "" as`, `note ""`, "note for o_ \"\"", "Note over box_: \n",
+		"class o[", "class note[", "participant box as", "state scale {", "---|usa", "-. depende",
+		": : ", "hora: 10", "Map{}", "entity {x}", "z)",
+	} {
+		if strings.Contains(s, bad) {
+			t.Errorf("saída contém %q, que o Mermaid 11 recusa:\n%s", bad, s)
+		}
+	}
+	for _, want := range []string{
+		// classes
+		`class o_["O"]`, `class note_["Note"] {`, "<<entity #123;x#125;>>",
+		"#preco: Decimal#40;10,2#41;", "z#41;: q", "mapa: Map#123;#125;", "run(cb: #40;#41; =#62; void) Promise#123;T#125;",
+		"A #123; #125;", "B#41;", "callback_", `o_ -- "0..*" note_ : tem #58; muitos`,
+		`note for callback_ "x : y"`, "classDiagram\n    direction TB\n",
+		// sequência
+		"participant box_ as Box", "participant sem_nome as sem_nome", "participant db as «database» db",
+		"box_->>sem_nome: a : b , c", "Note over box_,db: alt, [x: 1]",
+		// estados
+		`state "note_" as note_`, "note_ : entry / x #58; y", `state "Scale" as scale_`, "state scale_ {",
+		"note left of scale_ : do / a #58; b", "state state_ <<choice>>", "note right of note_ : hora#58; 10#58;00",
+		"[*] --> note_ : go #58; now",
+		// casos de uso
+		`subgraph sis["sis"]`, `uc(["uc"])`, `click_["👤 Click"]`, `click_ ---|"usa (sempre) | às vezes"| uc`,
+		`uc -. "depende [x] {y}" .-> pagar_cartao`, `o_(["o"])`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("saída sem %q:\n%s", want, s)
+		}
+	}
+}

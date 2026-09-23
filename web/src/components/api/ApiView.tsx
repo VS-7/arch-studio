@@ -4,7 +4,8 @@ import { FileCode2, Network, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { Endpoint, Snapshot } from '../../lib/types'
-import { Badge, Button, Card, EmptyState, Field, Input, Modal, Select, Textarea, useToast } from '../ui'
+import { ViewFrame } from '../shell/ViewFrame'
+import { Badge, Button, EmptyState, Field, Input, Modal, Select, Textarea, useToast } from '../ui'
 import { useConfirm } from '../ui/confirm'
 
 const METHOD_COLOR: Record<string, string> = {
@@ -50,27 +51,24 @@ export function ApiView({ snapshot }: { snapshot: Snapshot }) {
     id ? snapshot.diagram.nodes.find((n) => n.id === id)?.data.label ?? id : '—'
 
   return (
-    <div className="mx-auto h-full w-full max-w-6xl overflow-y-auto px-5 py-5">
-      <Card
-        title={`Contratos de API (${snapshot.endpoints.endpoints.length})`}
-        actions={
-          <>
-            <Button size="sm" variant="ghost" icon={FileCode2} loading={exporting} onClick={() => void exportOpenAPI()}>
-              Exportar OpenAPI 3.1
-            </Button>
-            <Button size="sm" icon={Plus} onClick={() => setEditing({ ...EMPTY })}>Novo contrato</Button>
-          </>
-        }
-        dense
-      >
+    <ViewFrame icon={Network} title="Contratos de API"
+      meta={`${snapshot.endpoints.endpoints.length} rota(s) · api/endpoints.yaml`}
+      actions={
+        <>
+          <Button size="sm" variant="ghost" icon={FileCode2} loading={exporting} onClick={() => void exportOpenAPI()}>
+            Exportar OpenAPI 3.1
+          </Button>
+          <Button size="sm" variant="primary" icon={Plus} onClick={() => setEditing({ ...EMPTY })}>Novo contrato</Button>
+        </>
+      }>
         {snapshot.endpoints.endpoints.length === 0 ? (
           <EmptyState icon={Network} title="Nenhum contrato declarado"
             description="Contratos podem ser criados aqui, pela aresta do canvas ou por um agente de IA via connect_nodes. Todos acabam no mesmo api/endpoints.yaml."
             action={<Button variant="primary" icon={Plus} onClick={() => setEditing({ ...EMPTY })}>Criar contrato</Button>} />
         ) : (
-          <div className="overflow-x-auto">
+            // Sem wrapper com overflow próprio: o cabeçalho fica fixo na rolagem da aba.
             <table className="w-full text-sm">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-panel-header">
                 <tr className="border-b border-app text-left text-[10.5px] uppercase tracking-wider text-muted-app">
                   <th className="px-4 py-2 font-semibold">Método</th>
                   <th className="px-4 py-2 font-semibold">Rota</th>
@@ -82,7 +80,7 @@ export function ApiView({ snapshot }: { snapshot: Snapshot }) {
               </thead>
               <tbody>
                 {snapshot.endpoints.endpoints.map((ep) => (
-                  <tr key={ep.id} className="group border-b border-app/60 last:border-0 hover:surface-3">
+                  <tr key={ep.id} onClick={() => setEditing(ep)} className="group cursor-pointer border-b border-app/60 hover:surface-3">
                     <td className="px-4 py-2">
                       <Badge color={METHOD_COLOR[ep.method.toUpperCase()] ?? '#64748b'}>{ep.method.toUpperCase()}</Badge>
                     </td>
@@ -91,9 +89,10 @@ export function ApiView({ snapshot }: { snapshot: Snapshot }) {
                     <td className="px-4 py-2 text-[12px] text-muted-app">
                       {label(ep.source)} <span className="opacity-50">→</span> {label(ep.target)}
                     </td>
-                    <td className="max-w-xs truncate px-4 py-2 text-[12px] text-muted-app">{ep.summary || '—'}</td>
+                    <td className="max-w-md truncate px-4 py-2 text-[12px] text-muted-app">{ep.summary || '—'}</td>
                     <td className="px-2 py-2">
-                      <div className="flex justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                      <div className="flex justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+                        onClick={(e) => e.stopPropagation()}>
                         <Button variant="ghost" size="icon" onClick={() => setEditing(ep)} aria-label="Editar"><Pencil size={13} /></Button>
                         <Button variant="ghost" size="icon" className="text-destructive" aria-label="Remover"
                           onClick={() => void remove(ep.id)}><Trash2 size={13} /></Button>
@@ -103,12 +102,10 @@ export function ApiView({ snapshot }: { snapshot: Snapshot }) {
                 ))}
               </tbody>
             </table>
-          </div>
         )}
-      </Card>
 
       {editing && <EndpointModal endpoint={editing} snapshot={snapshot} onClose={() => setEditing(null)} onSave={save} />}
-    </div>
+    </ViewFrame>
   )
 }
 

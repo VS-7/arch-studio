@@ -1,10 +1,10 @@
 // Diálogos de gestão de diagramas UML: criar, renomear e ver o espelho Mermaid.
 
-import mermaid from 'mermaid'
 import { ArrowDownToLine, Copy } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { api } from '../../lib/api'
+import { mermaidErrorMessage, renderMermaid } from '../../lib/mermaid'
 import type { UMLDiagram, UMLKind } from '../../lib/types'
 import { KIND_META, UML_KINDS } from '../../lib/umlMeta'
 import { Button, Field, Input, Modal, Textarea, useToast } from '../ui'
@@ -108,7 +108,8 @@ export function RenameDiagramDialog({ diagram, onClose }: { diagram: UMLDiagram 
 export function UmlMermaidDialog({ diagram, onClose }: { diagram: UMLDiagram | null; onClose: () => void }) {
   const toast = useToast()
   const [code, setCode] = useState('')
-  const preview = useRef<HTMLDivElement>(null)
+  // Estado (e não ref): o conteúdo do diálogo monta depois do efeito de abertura.
+  const [preview, setPreview] = useState<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!diagram) return
@@ -120,22 +121,19 @@ export function UmlMermaidDialog({ diagram, onClose }: { diagram: UMLDiagram | n
   }, [diagram, toast])
 
   useEffect(() => {
-    if (!code || !preview.current) return
+    if (!code || !preview) return
     const dark = document.documentElement.classList.contains('dark')
-    mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'neutral', securityLevel: 'strict' })
     let cancelled = false
     void (async () => {
       try {
-        const { svg } = await mermaid.render(`uml-mmd-${Date.now()}`, code)
-        if (!cancelled && preview.current) preview.current.innerHTML = svg
+        const svg = await renderMermaid(code, dark ? 'dark' : 'neutral')
+        if (!cancelled) preview.innerHTML = svg
       } catch (err) {
-        if (!cancelled && preview.current) {
-          preview.current.textContent = `Pré-visualização indisponível: ${(err as Error).message}`
-        }
+        if (!cancelled) preview.textContent = `Pré-visualização indisponível: ${mermaidErrorMessage(err)}`
       }
     })()
     return () => { cancelled = true }
-  }, [code])
+  }, [code, preview])
 
   const download = () => {
     if (!diagram) return
@@ -155,7 +153,7 @@ export function UmlMermaidDialog({ diagram, onClose }: { diagram: UMLDiagram | n
         <Button variant="secondary" icon={ArrowDownToLine} onClick={download}>Baixar .mermaid</Button>
       </>}>
       <div className="space-y-3">
-        <div ref={preview} className="max-h-[45vh] overflow-auto rounded-md border bg-background p-4 text-xs text-muted-foreground [&_svg]:mx-auto" />
+        <div ref={setPreview} className="max-h-[45vh] overflow-auto rounded-md border bg-background p-4 text-xs text-muted-foreground [&_svg]:mx-auto" />
         <pre className="max-h-56 overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] leading-relaxed">{code || '…'}</pre>
       </div>
     </Modal>
