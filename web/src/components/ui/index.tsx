@@ -139,10 +139,12 @@ export function Stat({ label, value, sub, accent }: {
   label: string; value: ReactNode; sub?: ReactNode; accent?: string
 }) {
   return (
-    <div className="rounded-lg border bg-card px-3.5 py-3 shadow-xs">
-      <div className="text-[11px] font-medium text-muted-foreground">{label}</div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums" style={accent ? { color: accent } : undefined}>{value}</div>
-      {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}
+    // Container query: o valor diminui em cards estreitos em vez de quebrar linha.
+    <div className="@container min-w-0 rounded-lg border bg-card px-3.5 py-3 shadow-xs">
+      <div className="truncate text-[11px] font-medium text-muted-foreground">{label}</div>
+      <div className="mt-1 truncate text-lg font-semibold tabular-nums @[13rem]:text-2xl" style={accent ? { color: accent } : undefined}
+        title={typeof value === 'string' ? value : undefined}>{value}</div>
+      {sub && <div className="mt-0.5 truncate text-xs text-muted-foreground" title={typeof sub === 'string' ? sub : undefined}>{sub}</div>}
     </div>
   )
 }

@@ -53,7 +53,10 @@ export function PricingView({ snapshot }: { snapshot: Snapshot }) {
   const maxTier = Math.max(...tierData.map(([, v]) => v), 1)
 
   return (
-    <div className="mx-auto h-full w-full max-w-6xl overflow-y-auto px-5 py-5">
+    // @container: o layout reage à largura da área central (que perde espaço
+    // para Toolbox e painéis laterais), não à largura da janela.
+    <div className="@container h-full overflow-y-auto">
+    <div className="mx-auto w-full max-w-6xl px-5 py-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-app">Dimensionamento & Precificação</h2>
@@ -73,7 +76,7 @@ export function PricingView({ snapshot }: { snapshot: Snapshot }) {
         </div>
       </div>
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-4 grid gap-3 @lg:grid-cols-2 @5xl:grid-cols-4">
         <Stat label="Esforço total" value={fmtHours(estimate.total_hours)}
           sub={`${fmtHours(estimate.base_hours)} + ${fmtHours(estimate.margin_hours)} de contingência`} accent="#0ea5e9" />
         <Stat label="Investimento" value={money(cur, estimate.total_cost)}
@@ -84,7 +87,7 @@ export function PricingView({ snapshot }: { snapshot: Snapshot }) {
           sub={`~${estimate.calendar_months} meses · equipe de ${estimate.team_size}`} accent="#f59e0b" />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 @5xl:grid-cols-2">
         <Card title="Esforço por camada">
           {tierData.length === 0 ? (
             <p className="py-6 text-center text-xs text-muted-app">Nada a distribuir ainda.</p>
@@ -109,22 +112,23 @@ export function PricingView({ snapshot }: { snapshot: Snapshot }) {
         </Card>
 
         <Card title="Distribuição por perfil">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full whitespace-nowrap text-sm">
             <thead>
               <tr className="text-left text-[10.5px] uppercase tracking-wider text-muted-app">
                 <th className="pb-2 font-semibold">Perfil</th>
                 <th className="pb-2 text-right font-semibold">Horas</th>
-                <th className="pb-2 text-right font-semibold">Valor/h</th>
-                <th className="pb-2 text-right font-semibold">Subtotal</th>
+                <th className="pb-2 pl-3 text-right font-semibold">Valor/h</th>
+                <th className="pb-2 pl-3 text-right font-semibold">Subtotal</th>
               </tr>
             </thead>
             <tbody>
               {estimate.roles.map((r) => (
                 <tr key={r.role} className="border-t border-app/60">
-                  <td className="py-1.5 text-[12.5px] text-app">{roleLabel(r.role)}</td>
+                  <td className="py-1.5 pr-3 text-[12.5px] text-app">{roleLabel(r.role)}</td>
                   <td className="py-1.5 text-right tabular-nums text-[12.5px] text-muted-app">{fmtHours(r.hours)}</td>
-                  <td className="py-1.5 text-right tabular-nums text-[12.5px] text-muted-app">{money(cur, r.rate)}</td>
-                  <td className="py-1.5 text-right tabular-nums text-[12.5px] font-semibold text-app">{money(cur, r.subtotal)}</td>
+                  <td className="py-1.5 pl-3 text-right tabular-nums text-[12.5px] text-muted-app">{money(cur, r.rate)}</td>
+                  <td className="py-1.5 pl-3 text-right tabular-nums text-[12.5px] font-semibold text-app">{money(cur, r.subtotal)}</td>
                 </tr>
               ))}
               <tr className="border-t border-app">
@@ -141,6 +145,7 @@ export function PricingView({ snapshot }: { snapshot: Snapshot }) {
               </tr>
             </tbody>
           </table>
+          </div>
         </Card>
 
         {estimate.cloud_items.length > 0 && (
@@ -153,8 +158,8 @@ export function PricingView({ snapshot }: { snapshot: Snapshot }) {
                   <li key={item.node_id} className="flex items-center gap-2.5 rounded-lg surface-3 px-3 py-2">
                     <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                     <span className="min-w-0 flex-1 truncate text-[12.5px] text-app">{item.label}</span>
-                    <span className="font-mono text-[11px] text-muted-app">{item.cloud_tier}</span>
-                    <span className="tabular-nums text-[12.5px] font-semibold text-app">{money(cur, item.monthly_cost)}</span>
+                    <span className="hidden truncate font-mono text-[11px] text-muted-app @md:inline">{item.cloud_tier}</span>
+                    <span className="shrink-0 whitespace-nowrap tabular-nums text-[12.5px] font-semibold text-app">{money(cur, item.monthly_cost)}</span>
                   </li>
                 )
               })}
@@ -188,6 +193,7 @@ export function PricingView({ snapshot }: { snapshot: Snapshot }) {
       )}
 
       <PricingConfigModal open={configOpen} onClose={() => setConfigOpen(false)} config={snapshot.pricing} />
+    </div>
     </div>
   )
 }
