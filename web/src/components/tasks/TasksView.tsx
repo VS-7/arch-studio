@@ -60,7 +60,7 @@ export function TasksView({ snapshot, onGeneratePRD }: { snapshot: Snapshot; onG
 
   return (
     <div className="mx-auto h-full w-full max-w-5xl overflow-y-auto px-5 py-5">
-      <div className="mb-4 surface rounded-xl border border-app p-4">
+      <div className="mb-4 surface rounded-lg border border-app p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-app">Fila de Implementação</h2>
@@ -82,7 +82,7 @@ export function TasksView({ snapshot, onGeneratePRD }: { snapshot: Snapshot; onG
         </div>
         <div className="mt-3 flex items-center gap-3">
           <div className="h-2 flex-1 overflow-hidden rounded-full surface-3">
-            <div className="h-full rounded-full bg-emerald-500 transition-all duration-700" style={{ width: `${progress}%` }} />
+            <div className="h-full rounded-full bg-success transition-all duration-700" style={{ width: `${progress}%` }} />
           </div>
           <span className="w-24 text-right text-xs font-semibold tabular-nums text-app">
             {completed}/{board.tasks.length} · {progress}%
@@ -99,7 +99,7 @@ export function TasksView({ snapshot, onGeneratePRD }: { snapshot: Snapshot; onG
           const blockedBy = (task.dependencies ?? []).filter((d) => byId.get(d)?.status !== 'completed')
 
           return (
-            <li key={task.id} className="surface rounded-xl border border-app">
+            <li key={task.id} className="surface rounded-lg border border-app">
               <div className="flex items-start gap-3 px-4 py-3">
                 <Icon size={17} className="mt-0.5 shrink-0" style={{ color: meta.dot }} />
                 <div className="min-w-0 flex-1">
@@ -109,7 +109,7 @@ export function TasksView({ snapshot, onGeneratePRD }: { snapshot: Snapshot; onG
                           : <ChevronRight size={13} className="mt-1 shrink-0 text-muted-app" />}
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <code className="font-mono text-[11px] font-bold text-sky-400">{task.id}</code>
+                        <code className="font-mono text-[11px] font-bold text-primary">{task.id}</code>
                         <span className="text-[13px] font-semibold text-app">{task.title}</span>
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -155,7 +155,7 @@ export function TasksView({ snapshot, onGeneratePRD }: { snapshot: Snapshot; onG
                           <ul className="space-y-1">
                             {task.acceptance!.map((a, i) => (
                               <li key={i} className="flex gap-2 text-[12px] leading-relaxed text-muted-app">
-                                <span className="text-emerald-500">✓</span>
+                                <span className="text-success">✓</span>
                                 <span dangerouslySetInnerHTML={{ __html: a.replace(/\*\*([^*]+)\*\*/g, '<strong class="text-app">$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>') }} />
                               </li>
                             ))}

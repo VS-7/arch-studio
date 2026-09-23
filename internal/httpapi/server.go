@@ -63,6 +63,22 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/diagram/import-mermaid", s.importMermaid)
 	m.HandleFunc("GET /api/diagram/mermaid", s.getMermaid)
 
+	// Diagramas UML
+	m.HandleFunc("GET /api/uml", s.listUML)
+	m.HandleFunc("POST /api/uml", s.createUML)
+	m.HandleFunc("POST /api/uml/generate/use-cases", s.generateUseCaseUML)
+	m.HandleFunc("GET /api/uml/{id}", s.getUML)
+	m.HandleFunc("GET /api/uml/{id}/mermaid", s.getUMLMermaid)
+	m.HandleFunc("PUT /api/uml/{id}", s.putUML)
+	m.HandleFunc("PATCH /api/uml/{id}", s.patchUML)
+	m.HandleFunc("DELETE /api/uml/{id}", s.deleteUML)
+	m.HandleFunc("POST /api/uml/{id}/elements", s.addUMLElement)
+	m.HandleFunc("PATCH /api/uml/{id}/elements/{eid}", s.updateUMLElement)
+	m.HandleFunc("DELETE /api/uml/{id}/elements/{eid}", s.deleteUMLElement)
+	m.HandleFunc("POST /api/uml/{id}/relations", s.addUMLRelation)
+	m.HandleFunc("PATCH /api/uml/{id}/relations/{rid}", s.updateUMLRelation)
+	m.HandleFunc("DELETE /api/uml/{id}/relations/{rid}", s.deleteUMLRelation)
+
 	// Documentação
 	m.HandleFunc("GET /api/requirements", s.getRequirements)
 	m.HandleFunc("POST /api/requirements", s.upsertRequirement)

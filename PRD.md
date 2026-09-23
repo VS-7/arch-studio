@@ -91,7 +91,8 @@ flowchart LR
 - **Algoritmo de Layout:** `@dagrejs/dagre` ou `elkjs` para layout automático inicial sem destruição de nós manuais.
 - **Editor de Documentos:** `@blocknote/core` e `@blocknote/react` (editor visual estilo Notion, com serialização direta e determinística para Markdown padrão).
 - **Renderização e Suporte Mermaid:** `mermaid.js` integrado com parser bidirecional.
-- **UI & Estilização:** Tailwind CSS + Shadcn/ui para design system acessível, rápido e responsivo.
+- **UI & Estilização:** Tailwind CSS + Shadcn/ui para design system acessível, rápido e responsivo, com tema claro e escuro.
+- **Layout de Modelagem:** Organização de tela inspirada no StarUML — barra de menus, Toolbox contextual, abas de diagramas, Model Explorer, Editor de propriedades e barra de status.
 
 ### 3.3 Persistência & Modelo Local-First
 - **Nenhuma base de dados externa (No SQLite / No Postgres):** O disco rígido e o repositório Git são a única fonte da verdade (*Source of Truth*).
@@ -115,7 +116,10 @@ meu-projeto/
 │   └── diagrams/
 │       ├── macro.json            # Coordenadas X/Y, tipos, estilos e metadata visual do canvas
 │       ├── macro.mermaid         # Visualização Mermaid sincronizada automaticamente para README
-│       ├── sequence/             # Diagramas de sequência gerados ou manuais (.mermaid)
+│       ├── usecase/              # Diagramas UML de casos de uso (<id>.json + <id>.mermaid)
+│       ├── class/                # Diagramas UML de classes / projeto
+│       ├── sequence/             # Diagramas UML de sequência
+│       ├── state/                # Diagramas UML de máquina de estados
 │       └── er/                   # Modelagem de entidades e banco de dados
 ├── docs/
 │   ├── requisitos.md             # Visão geral, requisitos funcionais (RFs) e não-funcionais (RNFs)
@@ -224,6 +228,15 @@ settings:
 - **[RF007] Sincronização Bidirecional Mermaid:**
   - *Exportação Contínua:* Cada gravação de `macro.json` regenera de forma não-destrutiva o arquivo `macro.mermaid`.
   - *Importação de Código:* Capacidade de colar um snippet Mermaid C4 ou Flowchart e gerar nós posicionados automaticamente via Dagre/Elkjs.
+
+### 5.2.1 Diagramas UML de Projeto
+Além do diagrama macro de arquitetura, o projeto mantém diagramas UML editáveis no mesmo canvas, persistidos como um JSON por diagrama em `.arch/diagrams/<tipo>/` com espelho Mermaid sincronizado:
+- **[RF024] Diagrama de Casos de Uso:** Atores, casos de uso, fronteira do sistema e notas; relações de associação, «include», «extend», generalização e dependência. Cada caso de uso pode apontar para sua ficha em `docs/casos-de-uso/`, e o diagrama pode ser gerado (de forma idempotente) a partir das fichas existentes.
+- **[RF025] Diagrama de Classes (Projeto):** Classes, interfaces, enumerações e pacotes com atributos e operações (visibilidade, tipo, parâmetros, estáticos e abstratos); relações de associação (dirigida ou não), agregação, composição, generalização, realização e dependência, com multiplicidades e papéis nas extremidades.
+- **[RF026] Diagrama de Sequência:** Linhas de vida (participante, ator, boundary, control, entity, banco de dados), mensagens ordenadas (síncrona, assíncrona, retorno, criação, destruição), auto-mensagens e fragmentos combinados (alt, opt, loop, par, break, critical, ref).
+- **[RF027] Diagrama de Estados:** Estados simples e compostos com atividades `entry/do/exit`, pseudoestados (inicial, final, escolha, fork, join, histórico) e transições no formato `evento [guarda] / efeito`.
+- **[RF028] Rastreabilidade entre Modelos:** Classes, linhas de vida e estados podem referenciar componentes do diagrama macro; todos os diagramas UML entram no `docs/ai-prd.md` como blocos Mermaid e no hash de integridade.
+- **[RF029] Interface de Modelagem estilo StarUML:** Toolbox contextual por tipo de diagrama (escolher a forma e clicar no canvas), Model Explorer em árvore com todos os diagramas e elementos, Editor de propriedades, abas de diagramas, exportação PNG/SVG/Mermaid e tema claro/escuro seguindo o design system Shadcn/ui.
 
 ### 5.3 Apresentação Executiva & Modo Pitch (Stakeholder Presentation)
 - **[RF008] Modo Apresentação Interativa:** Interface limpa sem barras de ferramentas, com slides passo a passo focando nós específicos (Storytelling de Arquitetura para clientes e diretores).
@@ -452,6 +465,14 @@ sequenceDiagram
   ```
 - **Saída:** `{ "status": "generated", "file_path": "docs/ai-prd.md", "total_tasks": 18, "summary": "PRD para IA gerado com sucesso." }`
 
+#### 7.1 Ferramentas de Diagramas UML
+- `list_uml_diagrams` / `get_uml_diagram`: lista os diagramas e devolve um diagrama em JSON compacto + Mermaid.
+- `create_uml_diagram`: cria um diagrama de casos de uso, classes, sequência ou estados.
+- `add_uml_element` / `update_uml_element`: cria ou altera atores, casos de uso, classes (aceitando membros no formato `"+ login(email: string): Token"`), linhas de vida, estados etc.
+- `add_uml_relation`: conecta elementos (origem/destino por id ou nome) com o tipo de relação adequado ao diagrama.
+- `remove_uml_item`: remove um elemento (com suas relações) ou uma relação.
+- `generate_use_case_diagram`: gera/sincroniza o diagrama de casos de uso a partir das fichas.
+
 #### 8. `get_implementation_tasks`
 - **Descrição:** Retorna a fila ordenada de tarefas técnicas pendentes com base no `docs/ai-prd.md` para orientar o agente de IA na codificação sequencial.
 - **Entrada:** `{ "status": "pending | in_progress | completed | all" }`
@@ -477,7 +498,8 @@ sequenceDiagram
 flowchart TD
     Fase1["Fase 1: MVP Web Local (Fundação)<br>• Go Core + WebSocket<br>• File Watcher fsnotify<br>• React Flow + Nós Básicos"] --> Fase2["Fase 2: Motor MCP & Integração com IA<br>• Servidor mcp-go stdio/SSE<br>• Tools Atômicas CRUD<br>• Preservação de Layout"]
     Fase2 --> Fase3["Fase 3: Docs, Mermaid & Modo Pitch<br>• BlockNote Editor WYSIWYG<br>• Bidirectional Mermaid Sync<br>• Modo Apresentação Stakeholders"]
-    Fase3 --> Fase4["Fase 4: Precificação & Dimensionamento<br>• Engine de Horas & Custos (.arch/pricing.yaml)<br>• Gerador de Propostas Comerciais<br>• Linter de Arquitetura"]
+    Fase3 --> Fase35["Fase 3.5: Diagramas UML<br>• Casos de Uso, Classes, Sequência, Estados<br>• Interface estilo StarUML (shadcn/ui)<br>• Tema claro/escuro"]
+    Fase35 --> Fase4["Fase 4: Precificação & Dimensionamento<br>• Engine de Horas & Custos (.arch/pricing.yaml)<br>• Gerador de Propostas Comerciais<br>• Linter de Arquitetura"]
     Fase4 --> Fase5["Fase 5: Desktop Nativo (Wails v3)<br>• Wails v3 Multiplataforma<br>• IPC Bindings Diretos<br>• Binários macOS, Linux, Windows"]
 ```
 
@@ -506,6 +528,13 @@ flowchart TD
   - Alternância entre visão de negócio e visão técnica.
   - Exportação em SVG e PNG de alta resolução para propostas.
   - Botão de 1 clique para exportar/atualizar o `docs/ai-prd.md`.
+
+### Fase 3.5: Diagramas UML & Interface de Modelagem
+- [x] Modelo canônico de diagramas UML (`internal/model/uml.go`) com validação por tipo de diagrama.
+- [x] Editores de Casos de Uso, Classes, Sequência e Estados no canvas, com notação UML fiel.
+- [x] Espelho Mermaid por diagrama e seção *UML MODELS* no AI-PRD.
+- [x] Ferramentas MCP para criação e edição atômica de diagramas UML.
+- [x] Interface no estilo StarUML sobre Shadcn/ui, com tema claro e escuro.
 
 ### Fase 4: Dimensionamento, Precificação & Scaffolding
 - [ ] Implementar parser e processador de `.arch/pricing.yaml`.

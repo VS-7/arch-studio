@@ -66,7 +66,7 @@ export function PricingView({ snapshot }: { snapshot: Snapshot }) {
           <label className="flex items-center gap-2 text-xs text-muted-app">
             Margem
             <input type="range" min={0} max={60} step={5} value={margin}
-              onChange={(e) => setMargin(Number(e.target.value))} className="w-28 accent-sky-500" />
+              onChange={(e) => setMargin(Number(e.target.value))} className="w-28 accent-primary" />
             <span className="w-9 text-right font-semibold tabular-nums text-app">{margin}%</span>
           </label>
           <Button size="sm" variant="ghost" icon={Settings2} onClick={() => setConfigOpen(true)}>Tabela de preços</Button>
@@ -137,7 +137,7 @@ export function PricingView({ snapshot }: { snapshot: Snapshot }) {
               </tr>
               <tr className="border-t border-app">
                 <td className="py-2 text-[13px] font-bold text-app" colSpan={3}>Total do projeto</td>
-                <td className="py-2 text-right tabular-nums text-[14px] font-bold text-emerald-400">{money(cur, estimate.total_cost)}</td>
+                <td className="py-2 text-right tabular-nums text-[14px] font-bold text-success">{money(cur, estimate.total_cost)}</td>
               </tr>
             </tbody>
           </table>
@@ -170,7 +170,7 @@ export function PricingView({ snapshot }: { snapshot: Snapshot }) {
                   {item.kind === 'node' ? 'comp' : item.kind === 'edge' ? 'integr' : 'caso'}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-app">{item.label}</span>
-                {item.explicit && <span className="text-[10px] text-sky-400" title="Horas definidas manualmente">manual</span>}
+                {item.explicit && <span className="text-[10px] text-primary" title="Horas definidas manualmente">manual</span>}
                 <span className="tabular-nums text-muted-app">{fmtHours(item.hours)}</span>
               </div>
             ))}
@@ -179,9 +179,9 @@ export function PricingView({ snapshot }: { snapshot: Snapshot }) {
       </div>
 
       {estimate.warnings && estimate.warnings.length > 0 && (
-        <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
-          <p className="text-xs font-semibold text-amber-300">Avisos da estimativa</p>
-          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[11.5px] text-amber-200/90">
+        <div className="mt-4 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3">
+          <p className="text-xs font-semibold text-warning">Avisos da estimativa</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[11.5px] text-warning/90">
             {estimate.warnings.map((w, i) => <li key={i}>{w}</li>)}
           </ul>
         </div>
@@ -253,7 +253,7 @@ function PricingConfigModal({ open, onClose, config }: { open: boolean; onClose:
         <div>
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-app">
             Perfis, valor/hora e distribuição {Math.abs(shareTotal - 1) > 0.01 && (
-              <span className="ml-2 text-amber-400">(soma {Math.round(shareTotal * 100)}% — será normalizada)</span>
+              <span className="ml-2 text-warning">(soma {Math.round(shareTotal * 100)}% — será normalizada)</span>
             )}
           </p>
           <div className="space-y-1.5">

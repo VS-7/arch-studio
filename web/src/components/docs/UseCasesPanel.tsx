@@ -13,9 +13,11 @@ const EMPTY: UseCase = {
   exceptions: [], business_rules: [], acceptance: [],
 }
 
-export function UseCasesPanel({ snapshot }: { snapshot: Snapshot }) {
+export function UseCasesPanel({ snapshot, focusCode }: { snapshot: Snapshot; focusCode?: string }) {
   const toast = useToast()
-  const [editing, setEditing] = useState<UseCase | null>(null)
+  const [editing, setEditing] = useState<UseCase | null>(
+    () => (focusCode ? snapshot.use_cases.find((uc) => uc.code === focusCode) ?? null : null),
+  )
 
   const remove = async (code: string) => {
     if (!window.confirm(`Remover o caso de uso ${code}?`)) return
@@ -46,7 +48,7 @@ export function UseCasesPanel({ snapshot }: { snapshot: Snapshot }) {
             {snapshot.use_cases.map((uc) => (
               <li key={uc.code} className="group rounded-lg border border-app px-3 py-2.5 transition-colors hover:surface-3">
                 <div className="flex items-start gap-2.5">
-                  <span className="mt-0.5 font-mono text-[11px] font-bold text-violet-400">{uc.code}</span>
+                  <span className="mt-0.5 font-mono text-[11px] font-bold text-ai">{uc.code}</span>
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px] font-semibold text-app">{uc.name}</p>
                     <p className="mt-0.5 text-[11.5px] text-muted-app">
@@ -64,7 +66,7 @@ export function UseCasesPanel({ snapshot }: { snapshot: Snapshot }) {
                   </div>
                   <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                     <Button variant="ghost" size="icon" onClick={() => setEditing(uc)} aria-label="Editar"><Pencil size={13} /></Button>
-                    <Button variant="ghost" size="icon" className="text-rose-400" aria-label="Remover"
+                    <Button variant="ghost" size="icon" className="text-destructive" aria-label="Remover"
                       onClick={() => void remove(uc.code)}><Trash2 size={13} /></Button>
                   </div>
                 </div>
@@ -139,7 +141,7 @@ function UseCaseModal({ useCase, snapshot, onClose, onSave }: {
               return (
                 <button key={n.id} onClick={() => toggleComponent(n.id)}
                   className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                    active ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300' : 'border-app text-muted-app hover:surface-3'}`}>
+                    active ? 'border-success bg-success/15 text-success' : 'border-app text-muted-app hover:surface-3'}`}>
                   {n.data.label}
                 </button>
               )

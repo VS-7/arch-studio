@@ -180,7 +180,7 @@ export function PitchMode({ snapshot, estimate, onExit }: {
             <div className="flex gap-1">
               {slides.map((slide, i) => (
                 <button key={slide.id ?? 'overview'} onClick={() => go(i)} aria-label={`Ir para ${slide.title}`}
-                  className={`h-1.5 rounded-full transition-all ${i === index ? 'w-6 bg-sky-500' : 'w-1.5 surface-3 hover:bg-sky-500/40'}`} />
+                  className={`h-1.5 rounded-full transition-all ${i === index ? 'w-6 bg-primary' : 'w-1.5 surface-3 hover:bg-primary/40'}`} />
               ))}
             </div>
             <span className="w-14 text-right text-xs tabular-nums text-muted-app">{index + 1} / {slides.length}</span>

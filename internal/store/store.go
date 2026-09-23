@@ -28,6 +28,9 @@ const (
 	DirDiagrams   = ".arch/diagrams"
 	DirSequence   = ".arch/diagrams/sequence"
 	DirER         = ".arch/diagrams/er"
+	DirUseCaseUML = ".arch/diagrams/usecase"
+	DirClass      = ".arch/diagrams/class"
+	DirState      = ".arch/diagrams/state"
 	DirDocs       = "docs"
 	DirUseCases   = "docs/casos-de-uso"
 	DirADR        = "docs/architecture-decisions"
@@ -173,8 +176,12 @@ func (s *Store) Remove(rel string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.rememberRemoval(p)
 	return os.Remove(p)
 }
+
+// removedMarker identifica, no índice de eco, arquivos apagados pelo servidor.
+const removedMarker = "removed"
 
 func hashBytes(data []byte) string {
 	sum := sha256.Sum256(data)
@@ -196,6 +203,14 @@ func (s *Store) rememberEcho(abs string, data []byte) {
 	}
 }
 
+// rememberRemoval registra que o próprio servidor apagou o arquivo, para que o
+// evento de remoção do fsnotify não seja anunciado como edição externa.
+func (s *Store) rememberRemoval(abs string) {
+	s.echoMu.Lock()
+	defer s.echoMu.Unlock()
+	s.echo[abs] = echoEntry{hash: removedMarker, at: time.Now()}
+}
+
 // IsEcho informa se o conteúdo atual do arquivo é idêntico à última gravação
 // feita pelo próprio servidor, permitindo ignorar o evento do fsnotify.
 func (s *Store) IsEcho(abs string) bool {
@@ -204,6 +219,10 @@ func (s *Store) IsEcho(abs string) bool {
 	s.echoMu.Unlock()
 	if !ok || time.Since(entry.at) > 10*time.Second {
 		return false
+	}
+	if entry.hash == removedMarker {
+		_, err := os.Stat(abs)
+		return os.IsNotExist(err)
 	}
 	data, err := os.ReadFile(abs)
 	if err != nil {
@@ -531,6 +550,170 @@ func (s *Store) SaveTasks(b *model.TaskBoard) error {
 }
 
 // ---------------------------------------------------------------------------
+// Diagramas UML
+// ---------------------------------------------------------------------------
+
+// UMLDirs mapeia cada tipo de diagrama UML ao seu diretório.
+var UMLDirs = map[string]string{
+	model.UMLKindUseCase:  DirUseCaseUML,
+	model.UMLKindClass:    DirClass,
+	model.UMLKindSequence: DirSequence,
+	model.UMLKindState:    DirState,
+}
+
+// UMLPath devolve o caminho relativo do JSON de um diagrama UML.
+func UMLPath(kind, id string) string { return UMLDirs[kind] + "/" + id + ".json" }
+
+// UMLMermaidPath devolve o caminho relativo do espelho Mermaid.
+func UMLMermaidPath(kind, id string) string { return UMLDirs[kind] + "/" + id + ".mermaid" }
+
+// validUMLID bloqueia ids que escapariam do diretório do tipo.
+func validUMLID(id string) bool {
+	return id != "" && !strings.ContainsAny(id, `/\`) && !strings.Contains(id, "..") &&
+		!strings.HasPrefix(id, ".")
+}
+
+func (s *Store) readUMLFile(kind, id string) (*model.UMLDiagram, error) {
+	rel := UMLPath(kind, id)
+	data, err := s.ReadFile(rel)
+	if err != nil {
+		return nil, err
+	}
+	var d model.UMLDiagram
+	if err := json.Unmarshal(data, &d); err != nil {
+		return nil, fmt.Errorf("%s inválido: %w", rel, err)
+	}
+	// O local do arquivo é a fonte da verdade para id e tipo.
+	d.ID, d.Kind, d.File = id, kind, rel
+	if d.Name == "" {
+		d.Name = id
+	}
+	if d.Elements == nil {
+		d.Elements = []model.UMLElement{}
+	}
+	if d.Relations == nil {
+		d.Relations = []model.UMLRelation{}
+	}
+	if d.Viewport.Zoom == 0 {
+		d.Viewport.Zoom = 1
+	}
+	return &d, nil
+}
+
+// ListUMLDiagrams lê todos os diagramas UML, ordenados por tipo (usecase,
+// class, sequence, state) e depois por nome. Arquivos .mermaid avulsos e JSON
+// ilegível são ignorados — a lista nunca é nula.
+func (s *Store) ListUMLDiagrams() ([]model.UMLDiagram, error) {
+	out := []model.UMLDiagram{}
+	for _, kind := range model.UMLKinds {
+		dir, err := s.Path(UMLDirs[kind])
+		if err != nil {
+			return nil, err
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		list := []model.UMLDiagram{}
+		for _, e := range entries {
+			name := e.Name()
+			if e.IsDir() || !strings.HasSuffix(name, ".json") || strings.HasPrefix(name, ".") {
+				continue
+			}
+			d, err := s.readUMLFile(kind, strings.TrimSuffix(name, ".json"))
+			if err != nil {
+				continue
+			}
+			list = append(list, *d)
+		}
+		sort.SliceStable(list, func(i, j int) bool {
+			a, b := strings.ToLower(list[i].Name), strings.ToLower(list[j].Name)
+			if a == b {
+				return list[i].ID < list[j].ID
+			}
+			return a < b
+		})
+		out = append(out, list...)
+	}
+	return out, nil
+}
+
+// LoadUMLDiagram localiza o diagrama pelo id em qualquer um dos diretórios.
+func (s *Store) LoadUMLDiagram(id string) (*model.UMLDiagram, error) {
+	if !validUMLID(id) {
+		return nil, model.UMLNotFound("diagrama UML não encontrado: %q", id)
+	}
+	for _, kind := range model.UMLKinds {
+		if !s.Exists(UMLPath(kind, id)) {
+			continue
+		}
+		return s.readUMLFile(kind, id)
+	}
+	return nil, model.UMLNotFound("diagrama UML não encontrado: %q", id)
+}
+
+// SaveUMLDiagram grava o JSON do diagrama de forma atômica. O campo `file` é
+// preenchido no retorno, mas nunca gravado no arquivo.
+func (s *Store) SaveUMLDiagram(d *model.UMLDiagram) error {
+	if !model.ValidUMLKind(d.Kind) {
+		return fmt.Errorf("tipo de diagrama inválido: %q", d.Kind)
+	}
+	if !validUMLID(d.ID) {
+		return fmt.Errorf("id de diagrama inválido: %q", d.ID)
+	}
+	d.Touch()
+	rel := UMLPath(d.Kind, d.ID)
+	onDisk := *d
+	onDisk.File = ""
+	data, err := json.MarshalIndent(&onDisk, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := s.WriteFile(rel, append(data, '\n')); err != nil {
+		return err
+	}
+	d.File = rel
+	return nil
+}
+
+// DeleteUMLDiagram remove o JSON e o espelho Mermaid (se existir).
+func (s *Store) DeleteUMLDiagram(d *model.UMLDiagram) error {
+	if err := s.Remove(UMLPath(d.Kind, d.ID)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := s.Remove(UMLMermaidPath(d.Kind, d.ID)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+// UniqueUMLID devolve o slug do nome livre entre TODOS os diagramas UML
+// (sufixo -2, -3… em colisão).
+func (s *Store) UniqueUMLID(name string) string {
+	base := model.Slugify(name)
+	if base == "" {
+		base = "diagrama"
+	}
+	taken := func(id string) bool {
+		for _, kind := range model.UMLKinds {
+			if s.Exists(UMLPath(kind, id)) {
+				return true
+			}
+		}
+		return false
+	}
+	id, i := base, 2
+	for taken(id) {
+		id = fmt.Sprintf("%s-%d", base, i)
+		i++
+	}
+	return id
+}
+
+// ---------------------------------------------------------------------------
 // Snapshot agregado
 // ---------------------------------------------------------------------------
 
@@ -544,6 +727,7 @@ type Snapshot struct {
 	Endpoints    *model.EndpointsSpec   `json:"endpoints"`
 	Pricing      *model.PricingConfig   `json:"pricing"`
 	Tasks        *model.TaskBoard       `json:"tasks"`
+	UMLDiagrams  []model.UMLDiagram     `json:"uml_diagrams"`
 	Mermaid      string                 `json:"mermaid"`
 	AIPRDExists  bool                   `json:"ai_prd_exists"`
 }
@@ -584,6 +768,10 @@ func (s *Store) Snapshot() (*Snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
+	umlDiagrams, err := s.ListUMLDiagrams()
+	if err != nil {
+		return nil, err
+	}
 	mermaid, _ := s.ReadFile(FileMacroMmd)
 	return &Snapshot{
 		Manifest:     manifest,
@@ -594,6 +782,7 @@ func (s *Store) Snapshot() (*Snapshot, error) {
 		Endpoints:    endpoints,
 		Pricing:      pricing,
 		Tasks:        tasks,
+		UMLDiagrams:  umlDiagrams,
 		Mermaid:      string(mermaid),
 		AIPRDExists:  s.Exists(FileAIPRD),
 	}, nil

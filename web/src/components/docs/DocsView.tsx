@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import type { Snapshot } from '../../lib/types'
 import { Button, Card, EmptyState, Spinner, useToast } from '../ui'
+import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'
 import { AdrPanel } from './AdrPanel'
 import { MarkdownView } from './MarkdownView'
 import { RequirementsPanel } from './RequirementsPanel'
@@ -18,24 +19,24 @@ const TABS: { id: Tab; label: string; icon: typeof BookOpen }[] = [
   { id: 'proposal', label: 'Proposta', icon: FileSignature },
 ]
 
-export function DocsView({ snapshot, onGeneratePRD }: { snapshot: Snapshot; onGeneratePRD: () => void }) {
-  const [tab, setTab] = useState<Tab>('requirements')
+export function DocsView({ snapshot, onGeneratePRD, initialTab, focusUseCase }: {
+  snapshot: Snapshot; onGeneratePRD: () => void; initialTab?: Tab; focusUseCase?: string
+}) {
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'requirements')
 
   return (
-    <div className="mx-auto h-full w-full max-w-5xl overflow-y-auto px-5 py-5">
-      <nav className="mb-4 flex flex-wrap gap-1 rounded-xl surface p-1 border border-app">
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button key={id} onClick={() => setTab(id)}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-              tab === id ? 'bg-sky-500 text-white' : 'text-muted-app hover:surface-3 hover:text-app'}`}>
-            <Icon size={13} />
-            {label}
-          </button>
-        ))}
-      </nav>
+    <div className="h-full overflow-y-auto">
+    <div className="mx-auto w-full max-w-5xl px-5 py-5">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="mb-4">
+        <TabsList>
+          {TABS.map(({ id, label, icon: Icon }) => (
+            <TabsTrigger key={id} value={id}><Icon />{label}</TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       {tab === 'requirements' && <RequirementsPanel snapshot={snapshot} />}
-      {tab === 'use-cases' && <UseCasesPanel snapshot={snapshot} />}
+      {tab === 'use-cases' && <UseCasesPanel snapshot={snapshot} focusCode={focusUseCase} />}
       {tab === 'adrs' && <AdrPanel snapshot={snapshot} />}
       {tab === 'ai-prd' && <FileViewer path="docs/ai-prd.md" title="docs/ai-prd.md"
         emptyTitle="AI-PRD ainda não gerado"
@@ -43,6 +44,7 @@ export function DocsView({ snapshot, onGeneratePRD }: { snapshot: Snapshot; onGe
         emptyAction={<Button variant="primary" icon={Bot} onClick={onGeneratePRD}>Gerar AI-PRD</Button>}
         refreshKey={snapshot.tasks.source_hash} />}
       {tab === 'proposal' && <ProposalTab snapshot={snapshot} />}
+    </div>
     </div>
   )
 }
@@ -114,7 +116,7 @@ function ProposalTab({ snapshot }: { snapshot: Snapshot }) {
       actions={
         <>
           <input value={client} onChange={(e) => setClient(e.target.value)} placeholder="Nome do cliente"
-            className="h-7 w-40 rounded-md border border-app surface px-2 text-xs text-app placeholder:text-muted-app/60 focus:outline-none focus:border-sky-500" />
+            className="h-7 w-40 rounded-md border border-app surface px-2 text-xs text-app placeholder:text-muted-app/60 focus:outline-none focus:border-primary" />
           <Button size="sm" variant="primary" icon={FileSignature} loading={generating} onClick={() => void generate()}>
             {content ? 'Regerar' : 'Gerar proposta'}
           </Button>

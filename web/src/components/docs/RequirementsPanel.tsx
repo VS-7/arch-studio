@@ -86,7 +86,7 @@ export function RequirementsPanel({ snapshot }: { snapshot: Snapshot }) {
           {items.map((r) => (
             <li key={r.id} className="group rounded-lg border border-app px-3 py-2.5 transition-colors hover:surface-3">
               <div className="flex items-start gap-2.5">
-                <span className="mt-0.5 font-mono text-[11px] font-bold text-sky-400">{r.id}</span>
+                <span className="mt-0.5 font-mono text-[11px] font-bold text-primary">{r.id}</span>
                 <div className="min-w-0 flex-1">
                   <p className="text-[13px] font-semibold leading-snug text-app">{r.title}</p>
                   {r.description && (
@@ -104,7 +104,7 @@ export function RequirementsPanel({ snapshot }: { snapshot: Snapshot }) {
                 <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                   <Button variant="ghost" size="icon" onClick={() => setEditing(r)} aria-label="Editar"><Pencil size={13} /></Button>
                   <Button variant="ghost" size="icon" onClick={() => void remove(r.id)} aria-label="Remover"
-                    className="text-rose-400"><Trash2 size={13} /></Button>
+                    className="text-destructive"><Trash2 size={13} /></Button>
                 </div>
               </div>
             </li>
@@ -210,7 +210,7 @@ function RequirementModal({ requirement, snapshot, onClose, onSave }: {
               return (
                 <button key={n.id} onClick={() => toggleComponent(n.id)}
                   className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                    active ? 'border-sky-500 bg-sky-500/15 text-sky-300' : 'border-app text-muted-app hover:surface-3'}`}>
+                    active ? 'border-primary bg-primary/15 text-primary' : 'border-app text-muted-app hover:surface-3'}`}>
                   {n.data.label}
                 </button>
               )

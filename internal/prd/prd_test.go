@@ -167,7 +167,7 @@ func TestDocumentoContemSecoesObrigatorias(t *testing.T) {
 		"## 4. TOPOLOGICAL IMPLEMENTATION SEQUENCE",
 		"## 5. USE CASE ACCEPTANCE CRITERIA",
 		"## 6. REQUIREMENTS TRACEABILITY",
-		"## 8. AGENT EXECUTION PROTOCOL",
+		"## 9. AGENT EXECUTION PROTOCOL",
 		"```mermaid",
 	} {
 		if !strings.Contains(res.Markdown, section) {
@@ -207,5 +207,26 @@ func TestCicloNaoTrava(t *testing.T) {
 	res := Compile(in, Options{IncludeTestScenarios: false})
 	if len(res.Board.Tasks) != 5 {
 		t.Errorf("com ciclo, todas as 5 tarefas ainda devem ser geradas, got %d", len(res.Board.Tasks))
+	}
+}
+
+func TestSecaoUMLEntraNoDocumentoENoHash(t *testing.T) {
+	in := buildInput()
+	sem := Compile(in, Options{Granularity: "detailed"})
+	if strings.Contains(sem.Markdown, "UML MODELS") {
+		t.Error("seção UML não deveria existir sem diagramas")
+	}
+
+	d := model.NewUMLDiagram("modelo", model.UMLKindClass, "Modelo de Domínio")
+	d.Elements = []model.UMLElement{{ID: "el-user", Type: "class", Name: "User"}}
+	in.UMLDiagrams = []model.UMLDiagram{*d}
+	com := Compile(in, Options{Granularity: "detailed"})
+	for _, want := range []string{"## 7. UML MODELS", "### Modelo de Domínio (class)", "```mermaid\n%% Gerado", "classDiagram"} {
+		if !strings.Contains(com.Markdown, want) {
+			t.Errorf("ai-prd.md sem %q", want)
+		}
+	}
+	if sem.Hash == com.Hash {
+		t.Error("diagramas UML deveriam entrar no hash de integridade")
 	}
 }

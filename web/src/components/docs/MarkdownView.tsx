@@ -38,7 +38,7 @@ export function MarkdownView({ source, className }: { source: string; className?
           const { svg } = await mermaid.render(`mmd-${Date.now()}-${index}`, code)
           if (cancelled) return
           block.innerHTML = svg
-          block.classList.add('overflow-x-auto', 'rounded-xl', 'p-2')
+          block.classList.add('overflow-x-auto', 'rounded-lg', 'p-2')
         } catch {
           if (cancelled) return
           // Um diagrama inválido não pode derrubar a leitura do documento.

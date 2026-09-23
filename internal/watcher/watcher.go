@@ -9,6 +9,7 @@ package watcher
 import (
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -43,6 +44,7 @@ func New(st *store.Store, hb *hub.Hub) (*Watcher, error) {
 // watchedDirs são os diretórios monitorados recursivamente.
 var watchedDirs = []string{
 	store.DirArch, store.DirDiagrams, store.DirSequence, store.DirER,
+	store.DirUseCaseUML, store.DirClass, store.DirState,
 	store.DirDocs, store.DirUseCases, store.DirADR, store.DirAPI,
 }
 
@@ -101,12 +103,16 @@ func (w *Watcher) handle(ev fsnotify.Event) {
 	if ev.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Remove|fsnotify.Rename) == 0 {
 		return
 	}
-	if !relevant(ev.Name) {
-		return
+	// Diretório novo dentro da árvore observada passa a ser monitorado também
+	// (ex.: .arch/diagrams/class criado depois do start). A checagem vem antes
+	// do filtro de extensão, que descartaria nomes de diretório.
+	if ev.Op&fsnotify.Create != 0 {
+		if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
+			_ = w.fsw.Add(ev.Name)
+			return
+		}
 	}
-	// Diretório novo dentro da árvore observada passa a ser monitorado também.
-	if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
-		_ = w.fsw.Add(ev.Name)
+	if !relevant(ev.Name) {
 		return
 	}
 
@@ -142,17 +148,37 @@ func (w *Watcher) flush() {
 			continue
 		}
 		seen[evType+rel] = true
-		w.hb.Broadcast(hub.Event{
+		ev := hub.Event{
 			Type:    evType,
 			Source:  hub.SourceDisk,
 			Path:    rel,
 			Message: "Arquivo alterado fora do ArchCode Studio",
-		})
+		}
+		if evType == hub.EventUML {
+			ev.Payload = map[string]any{"diagram_id": strings.TrimSuffix(path.Base(rel), ".json")}
+		}
+		w.hb.Broadcast(ev)
 	}
+}
+
+// umlDiagramFile informa se o caminho é o JSON de um diagrama UML.
+func umlDiagramFile(rel string) bool {
+	if !strings.HasSuffix(rel, ".json") {
+		return false
+	}
+	dir := path.Dir(rel)
+	for _, d := range store.UMLDirs {
+		if dir == d {
+			return true
+		}
+	}
+	return false
 }
 
 func classify(rel string) string {
 	switch {
+	case umlDiagramFile(rel):
+		return hub.EventUML
 	case rel == store.FileMacroJSON, rel == store.FileMacroMmd:
 		return hub.EventDiagram
 	case rel == store.FileEndpoints:

@@ -12,7 +12,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../../lib/api'
 import { nodeMeta } from '../../lib/nodeMeta'
-import type { ArchEdge, ArchNode, Diagram } from '../../lib/types'
+import type { Tool } from '../../lib/tools'
+import type { ArchEdge, ArchNode, Diagram, NodeType } from '../../lib/types'
 import { useToast } from '../ui'
 import { ArchNodeView, GroupNodeView, type ArchFlowNode } from './ArchNodeView'
 
@@ -34,6 +35,17 @@ interface Props {
   onReady?: (handle: CanvasHandle) => void
   interactive?: boolean
   onDirty?: () => void
+  /** Ferramenta da Toolbox: com um tipo de componente ativo, clicar no canvas o cria. */
+  tool?: Tool
+  onToolDone?: () => void
+  onZoom?: (zoom: number) => void
+}
+
+/** Nome inicial de um componente criado pela Toolbox ("Serviço 1", "Cache 2"…). */
+function nextLabel(diagram: Diagram, type: string): string {
+  const base = nodeMeta(type).label
+  const used = new Set(diagram.nodes.map((n) => n.data.label.toLowerCase()))
+  for (let i = 1; ; i++) if (!used.has(`${base} ${i}`.toLowerCase())) return `${base} ${i}`
 }
 
 function toFlowNodes(
@@ -91,6 +103,7 @@ function toFlowEdges(diagram: Diagram, executive: boolean, spotlight?: Set<strin
 
 export function ArchCanvas({
   diagram, executive, highlight, spotlight, selectedId, onSelect, onReady, interactive = true, onDirty,
+  tool, onToolDone, onZoom,
 }: Props) {
   const toast = useToast()
   const [nodes, setNodes, onNodesChange] = useNodesState<ArchFlowNode>([])
@@ -154,19 +167,23 @@ export function ArchCanvas({
       .catch((err: unknown) => toast('error', (err as Error).message))
   }, [diagram.nodes, setEdges, toast])
 
+  const createAt = useCallback((type: NodeType, screen: { x: number; y: number }) => {
+    if (!instance) return
+    const meta = nodeMeta(type)
+    const p = instance.screenToFlowPosition(screen)
+    const position = { x: Math.round(p.x - 110), y: Math.round(p.y - 55) }
+    api.addNode({ label: nextLabel(diagram, type), type, tier: meta.tier, position })
+      .then((node: ArchNode) => { onSelect(node.id, 'node'); toast('success', `Componente "${node.data.label}" criado — renomeie no Editor`) })
+      .catch((err: unknown) => toast('error', (err as Error).message))
+  }, [diagram, instance, onSelect, toast])
+
   const onDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault()
     const raw = event.dataTransfer.getData('application/archcode-node')
-    if (!raw || !instance) return
-    const { type } = JSON.parse(raw) as { type: string }
-    const position = instance.screenToFlowPosition({ x: event.clientX, y: event.clientY })
-    const meta = nodeMeta(type)
-    const label = window.prompt(`Nome do novo componente (${meta.label})`, '')
-    if (!label?.trim()) return
-    api.addNode({ label: label.trim(), type, tier: meta.tier, position })
-      .then((node: ArchNode) => { onSelect(node.id, 'node'); toast('success', `Componente "${node.data.label}" criado`) })
-      .catch((err: unknown) => toast('error', (err as Error).message))
-  }, [instance, onSelect, toast])
+    if (!raw) return
+    const { type } = JSON.parse(raw) as { type: NodeType }
+    createAt(type, { x: event.clientX, y: event.clientY })
+  }, [createAt])
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault()
@@ -180,8 +197,16 @@ export function ArchCanvas({
     [],
   )
 
+  // Viewport nunca ajustado pelo usuário (0,0,1): enquadra o diagrama inteiro.
+  const fitOnMount = useMemo(() => {
+    const vp = diagram.viewport
+    return !vp || (vp.x === 0 && vp.y === 0 && (!vp.zoom || vp.zoom === 1))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return (
-    <div className="h-full w-full" ref={wrapper} onDrop={onDrop} onDragOver={onDragOver}>
+    <div className="h-full w-full" ref={wrapper} onDrop={onDrop} onDragOver={onDragOver}
+      style={{ cursor: tool?.mode === 'arch' ? 'crosshair' : undefined }}>
       <ReactFlow<ArchFlowNode, Edge>
         nodes={nodes}
         edges={edges}
@@ -197,9 +222,19 @@ export function ArchCanvas({
         }}
         onNodeClick={(_, node) => onSelect(node.id, 'node')}
         onEdgeClick={(_, edge) => onSelect(edge.id, 'edge')}
-        onPaneClick={() => onSelect(null, 'node')}
+        onPaneClick={(event) => {
+          if (tool?.mode === 'arch') {
+            createAt(tool.type, { x: event.clientX, y: event.clientY })
+            onToolDone?.()
+            return
+          }
+          onSelect(null, 'node')
+        }}
+        onMove={(_, vp) => onZoom?.(vp.zoom)}
         connectionLineType={ConnectionLineType.SmoothStep}
         defaultViewport={defaultViewport}
+        fitView={fitOnMount}
+        fitViewOptions={{ padding: 0.15, maxZoom: 1.1 }}
         minZoom={0.15}
         maxZoom={2.5}
         snapToGrid
@@ -215,7 +250,7 @@ export function ArchCanvas({
       >
         {interactive && (
           <>
-            <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} color="var(--canvas-dot)" />
+            <Background variant={BackgroundVariant.Lines} gap={20} lineWidth={0.6} color="var(--canvas-grid)" />
             <Controls position="bottom-left" showInteractive={false} />
             <MiniMap
               position="bottom-right"
@@ -223,15 +258,15 @@ export function ArchCanvas({
               zoomable
               nodeStrokeWidth={3}
               nodeColor={(node: Node) => nodeMeta(String((node.data as { __type?: string }).__type ?? 'compute')).color}
-              maskColor="color-mix(in oklab, var(--canvas-bg) 72%, transparent)"
+              maskColor="color-mix(in oklab, var(--canvas-bg) 70%, transparent)"
             />
           </>
         )}
       </ReactFlow>
       {selectedId === null && interactive && nodes.length === 0 && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <p className="text-sm text-muted-app">
-            Arraste um componente da paleta ou peça a um agente de IA para modelar a arquitetura.
+          <p className="text-[13px] text-muted-foreground">
+            Escolha um componente na Toolbox e clique no canvas, ou peça a um agente de IA para modelar a arquitetura.
           </p>
         </div>
       )}

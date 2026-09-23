@@ -3,7 +3,8 @@
 import { transport } from './transport'
 import type {
   ADR, ArchEdge, ArchNode, Diagram, Endpoint, EndpointsSpec, Estimate,
-  LintReport, PricingConfig, Requirement, RequirementsDoc, Snapshot, Task, UseCase,
+  LintReport, PricingConfig, Requirement, RequirementsDoc, Snapshot, Task, UMLDiagram, UMLElement,
+  UMLKind, UMLRelation, UseCase,
 } from './types'
 
 const { request } = { request: transport.request.bind(transport) }
@@ -65,6 +66,31 @@ export const api = {
   deleteEdge: (id: string) => request<{ deleted: boolean }>('DELETE', `/api/diagram/edges/${encodeURIComponent(id)}`),
   autoLayout: () => request<Diagram>('POST', '/api/diagram/autolayout', {}),
   importMermaid: (source: string) => request<Diagram>('POST', '/api/diagram/import-mermaid', { source }),
+
+  // Diagramas UML
+  listUML: () => request<UMLDiagram[]>('GET', '/api/uml'),
+  getUML: (id: string) => request<UMLDiagram>('GET', `/api/uml/${encodeURIComponent(id)}`),
+  createUML: (input: { kind: UMLKind; name: string; description?: string }) =>
+    request<UMLDiagram>('POST', '/api/uml', input),
+  saveUML: (d: UMLDiagram) => request<{ saved: boolean }>('PUT', `/api/uml/${encodeURIComponent(d.id)}`, d),
+  renameUML: (id: string, input: { name?: string; description?: string }) =>
+    request<UMLDiagram>('PATCH', `/api/uml/${encodeURIComponent(id)}`, input),
+  deleteUML: (id: string) => request<{ deleted: boolean }>('DELETE', `/api/uml/${encodeURIComponent(id)}`),
+  umlMermaid: (id: string) => request<{ mermaid: string }>('GET', `/api/uml/${encodeURIComponent(id)}/mermaid`),
+  generateUseCaseDiagram: (name?: string) =>
+    request<UMLDiagram>('POST', '/api/uml/generate/use-cases', name ? { name } : {}),
+  addUMLElement: (diagramId: string, el: Partial<UMLElement>) =>
+    request<UMLElement>('POST', `/api/uml/${encodeURIComponent(diagramId)}/elements`, el),
+  updateUMLElement: (diagramId: string, id: string, patch: Partial<UMLElement>) =>
+    request<UMLElement>('PATCH', `/api/uml/${encodeURIComponent(diagramId)}/elements/${encodeURIComponent(id)}`, patch),
+  deleteUMLElement: (diagramId: string, id: string) =>
+    request<{ deleted: boolean }>('DELETE', `/api/uml/${encodeURIComponent(diagramId)}/elements/${encodeURIComponent(id)}`),
+  addUMLRelation: (diagramId: string, rel: Partial<UMLRelation>) =>
+    request<UMLRelation>('POST', `/api/uml/${encodeURIComponent(diagramId)}/relations`, rel),
+  updateUMLRelation: (diagramId: string, id: string, patch: Partial<UMLRelation>) =>
+    request<UMLRelation>('PATCH', `/api/uml/${encodeURIComponent(diagramId)}/relations/${encodeURIComponent(id)}`, patch),
+  deleteUMLRelation: (diagramId: string, id: string) =>
+    request<{ deleted: boolean }>('DELETE', `/api/uml/${encodeURIComponent(diagramId)}/relations/${encodeURIComponent(id)}`),
 
   // Documentação
   getRequirements: () => request<{ doc: RequirementsDoc; raw: string }>('GET', '/api/requirements'),

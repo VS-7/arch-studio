@@ -93,7 +93,7 @@ export function ApiView({ snapshot }: { snapshot: Snapshot }) {
                     <td className="px-2 py-2">
                       <div className="flex justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                         <Button variant="ghost" size="icon" onClick={() => setEditing(ep)} aria-label="Editar"><Pencil size={13} /></Button>
-                        <Button variant="ghost" size="icon" className="text-rose-400" aria-label="Remover"
+                        <Button variant="ghost" size="icon" className="text-destructive" aria-label="Remover"
                           onClick={() => void remove(ep.id)}><Trash2 size={13} /></Button>
                       </div>
                     </td>

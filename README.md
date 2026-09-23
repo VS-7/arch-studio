@@ -99,7 +99,10 @@ meu-projeto/
 │   └── diagrams/
 │       ├── macro.json             # nós, arestas, posições — a fonte da verdade visual
 │       ├── macro.mermaid          # espelho Mermaid, regenerado a cada gravação
-│       ├── sequence/              # diagramas de sequência
+│       ├── usecase/               # diagramas UML de casos de uso (<id>.json + <id>.mermaid)
+│       ├── class/                 # diagramas UML de classes
+│       ├── sequence/              # diagramas UML de sequência
+│       ├── state/                 # diagramas UML de estados
 │       └── er/                    # modelagem de entidades
 ├── docs/
 │   ├── requisitos.md              # RFs e RNFs em formato estruturado e estável
@@ -116,16 +119,51 @@ meu-projeto/
 
 ## Interface
 
+O layout segue o StarUML: **barra de menus** (Arquivo, Editar, Exibir, Modelo, Ferramentas, Ajuda),
+**Toolbox** à esquerda com as formas do diagrama aberto, **abas de diagramas** no centro,
+**Model Explorer** (árvore do projeto) e **Editor** de propriedades à direita, e **barra de status**
+com arquivo, contagens, qualidade e zoom. Os painéis são redimensionáveis e ocultáveis
+(`Ctrl+B` / `Ctrl+J`). Os componentes de interface são do [shadcn/ui](https://ui.shadcn.com)
+(Radix + Tailwind), com **tema claro, escuro ou do sistema** (menu *Exibir → Tema*), que vale também
+para a área de desenho.
+
 | Tela | O que faz |
 | :--- | :--- |
-| **Arquitetura** | Canvas infinito com paleta de 9 tipos de componente, conexões tipadas, agrupamentos, minimapa e inspetor de metadados. Arrastar um nó grava em disco imediatamente. |
+| **Arquitetura** | Canvas do diagrama macro em notação de componentes UML («service», «database»…), com 9 tipos de componente, conexões tipadas, agrupamentos, minimapa e editor de metadados. Arrastar um nó grava em disco imediatamente. |
+| **Diagramas UML** | Casos de uso, classes, sequência e estados (veja abaixo). Escolha a forma na Toolbox e clique no canvas; relações por arraste entre as alças ou por clique na origem e no destino. Exportação em PNG, SVG e Mermaid. |
 | **Documentação** | Requisitos (RF/RNF), casos de uso com fluxos e critérios Given-When-Then, ADRs, visualização do AI-PRD e da proposta comercial. |
 | **Contratos** | Tabela editável de `api/endpoints.yaml` com exportação para OpenAPI 3.1. |
 | **Precificação** | Esforço por camada, distribuição por perfil, custo de nuvem, prazo e editor da tabela de preços. |
 | **Implementação** | Fila de tarefas em ordem topológica, com dependências, critérios de aceite e progresso — a mesma que a IA consome. |
 | **Pitch** | Apresentação em tela cheia com zoom cinematográfico por componente, alternância negócio/engenharia e exportação em SVG, PNG e PDF. |
 
-Atalhos no Modo Pitch: `→`/`←` navega, `E` alterna executivo/engenharia, `F` tela cheia, `Esc` sai.
+Atalhos nos diagramas: `Esc` volta à ferramenta Selecionar, `Del` exclui a seleção, `Shift+1` ajusta à
+tela, `+`/`−` aproxima e afasta. No Modo Pitch: `→`/`←` navega, `E` alterna executivo/engenharia,
+`F` tela cheia, `Esc` sai.
+
+---
+
+## Diagramas UML
+
+Além do diagrama macro de componentes, cada projeto guarda diagramas UML de quatro tipos, um arquivo
+JSON por diagrama (mais o espelho `.mermaid`, quando `sync_mermaid` está ativo):
+
+| Tipo | Pasta | Elementos | Relações |
+| :--- | :--- | :--- | :--- |
+| Casos de uso | `.arch/diagrams/usecase/` | ator, caso de uso, fronteira, nota | associação, include, extend, generalização, dependência |
+| Classes | `.arch/diagrams/class/` | classe, interface, enum, pacote, nota | associação (dirigida ou não), agregação, composição, generalização, realização, dependência |
+| Sequência | `.arch/diagrams/sequence/` | lifeline, fragmento combinado, nota | mensagem (sync, async, reply, create, destroy) |
+| Estados | `.arch/diagrams/state/` | estado (simples ou composto), inicial, final, escolha, fork, join, histórico, nota | transição (`evento [guarda] / efeito`) |
+
+O `id` do diagrama é o slug do nome na criação e nunca muda. Setas e losangos ficam sempre na ponta
+de destino (filho → pai, parte → todo, origem → destino), e mensagens de sequência têm ordem única
+1..n, renumerada a cada inclusão ou remoção. Classes, lifelines e estados podem apontar para um
+componente do diagrama macro via `component_id`, e casos de uso para a ficha via `use_case`.
+
+O diagrama de casos de uso pode ser gerado a partir das fichas de `docs/casos-de-uso/` — de forma
+idempotente, preservando posições. Todos os diagramas entram no `docs/ai-prd.md` (seção *UML MODELS*)
+como blocos Mermaid e fazem parte do hash de integridade. O `init` sem `--empty` cria um exemplo de
+cada tipo, coerente com o caso de uso de autenticação.
 
 ---
 
@@ -171,6 +209,14 @@ http://127.0.0.1:8765/mcp/sse
 | `validate_architecture_rules` | Linter de 12 regras arquiteturais. |
 | `import_mermaid_diagram` | Importa um snippet Mermaid preservando coordenadas conhecidas. |
 | `export_openapi` | Gera `api/openapi.yaml`. |
+| `list_uml_diagrams` | Lista os diagramas UML com contadores de elementos e relações. |
+| `get_uml_diagram` | JSON compacto (sem coordenadas) de um diagrama UML, mais o Mermaid. |
+| `create_uml_diagram` | Cria um diagrama de casos de uso, classes, sequência ou estados. |
+| `add_uml_element` | Adiciona ator, classe, lifeline, estado… numa posição livre. Aceita membros em notação UML (`+ login(email: string): Token`). |
+| `update_uml_element` | Atualiza campos de um elemento (merge), preservando a posição. |
+| `add_uml_relation` | Liga elementos por id ou nome: herança, composição, mensagem, transição… |
+| `remove_uml_item` | Remove um elemento (com suas relações) ou uma relação; mensagens são renumeradas. |
+| `generate_use_case_diagram` | Gera ou completa o diagrama de casos de uso a partir de `docs/casos-de-uso`. |
 
 Dois prompts acompanham o servidor: `implement_next_task` e `model_new_feature`.
 
@@ -279,7 +325,10 @@ internal/
   hub/ watcher/         eventos em tempo real e observação do disco
   project/              scaffolding do `init`
   webui/                embed.FS do bundle compilado
-web/                    frontend React 19 + Vite + Tailwind 4 + React Flow 12
+web/                    frontend React 19 + Vite + Tailwind 4 + shadcn/ui + React Flow 12
+  src/components/ui/    componentes shadcn/ui (components.json na raiz de web/)
+  src/components/shell/ menus, Toolbox e Model Explorer (layout estilo StarUML)
+  src/components/uml/   formas, relações, canvas e editor dos diagramas UML
 ```
 
 A API HTTP e o servidor MCP chamam **exatamente os mesmos métodos** do pacote `app`. Uma escrita de

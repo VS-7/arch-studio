@@ -46,6 +46,7 @@ func Init(st *store.Store, opts Options) (*Result, error) {
 
 	for _, dir := range []string{
 		store.DirArch, store.DirDiagrams, store.DirSequence, store.DirER,
+		store.DirUseCaseUML, store.DirClass, store.DirState,
 		store.DirDocs, store.DirUseCases, store.DirADR, store.DirAPI,
 	} {
 		abs, err := st.Path(dir)
@@ -163,13 +164,38 @@ Este texto é lido pelos agentes de IA como contexto de produto antes de qualque
 		if _, err := st.SaveADR(adr); err == nil {
 			res.Created = append(res.Created, adr.File)
 		}
+
+		// Diagramas UML de exemplo, um de cada tipo.
+		for _, d := range starterUMLDiagrams(name, uc) {
+			rel := store.UMLPath(d.Kind, d.ID)
+			if st.Exists(rel) {
+				res.Skipped = append(res.Skipped, rel)
+				continue
+			}
+			d.Normalize()
+			if err := d.Validate(); err != nil {
+				return nil, fmt.Errorf("diagrama de exemplo %s inválido: %w", d.ID, err)
+			}
+			if err := st.SaveUMLDiagram(d); err != nil {
+				return nil, err
+			}
+			res.Created = append(res.Created, rel)
+			if manifest.Settings.SyncMermaid {
+				if err := write(store.UMLMermaidPath(d.Kind, d.ID), []byte(mermaid.ExportUML(d)), true); err != nil {
+					return nil, err
+				}
+			}
+		}
 	}
 
 	// .gitignore específico do estado transitório.
 	if err := write(store.DirArch+"/.gitignore", []byte("*.tmp\n.archcode-*\n"), false); err != nil {
 		return nil, err
 	}
-	for _, keep := range []string{store.DirSequence + "/.gitkeep", store.DirER + "/.gitkeep"} {
+	for _, keep := range []string{
+		store.DirSequence + "/.gitkeep", store.DirER + "/.gitkeep",
+		store.DirUseCaseUML + "/.gitkeep", store.DirClass + "/.gitkeep", store.DirState + "/.gitkeep",
+	} {
 		if err := write(keep, []byte(""), false); err != nil {
 			return nil, err
 		}
@@ -337,6 +363,101 @@ func starterUseCase() *model.UseCase {
 			"**Given** um usuário com senha incorreta **When** envia `POST /api/v1/auth/login` **Then** recebe HTTP 401 sem indicar qual campo falhou.",
 		},
 	}
+}
+
+// starterUMLDiagrams cria um diagrama de cada tipo, coerente com o exemplo de
+// autenticação (CDU001, Core API, PostgreSQL, JWT).
+func starterUMLDiagrams(projectName string, uc *model.UseCase) []*model.UMLDiagram {
+	pos := func(x, y float64) model.Position { return model.Position{X: x, Y: y} }
+	members := func(specs ...string) []model.UMLMember {
+		out := make([]model.UMLMember, 0, len(specs))
+		for _, s := range specs {
+			m, _ := model.ParseUMLMember(s)
+			out = append(out, m)
+		}
+		return out
+	}
+
+	// Casos de uso: derivado das fichas, como faria generate_use_case_diagram.
+	useCases := model.NewUMLDiagram("casos-de-uso", model.UMLKindUseCase, "Casos de Uso")
+	useCases.Description = "Gerado a partir das fichas em docs/casos-de-uso."
+	model.SyncUseCaseDiagram(useCases, projectName, []model.UseCase{*uc})
+
+	// Classes: modelo de domínio da autenticação.
+	class := model.NewUMLDiagram("modelo-de-dominio", model.UMLKindClass, "Modelo de Domínio")
+	class.Description = "Entidades e serviços do contexto de autenticação."
+	class.Elements = []model.UMLElement{
+		{ID: "el-user", Type: "class", Name: "User", Position: pos(360, 40), ComponentID: "node-core-api",
+			Attributes: members("+ id: UUID", "+ email: string", "- passwordHash: string", "+ status: UserStatus"),
+			Operations: members("+ checkPassword(senha: string): bool")},
+		{ID: "el-session", Type: "class", Name: "Session", Position: pos(720, 40), ComponentID: "node-core-api",
+			Attributes: members("+ id: UUID", "+ expiresAt: time", "+ revokedAt: time"),
+			Operations: members("+ isActive(agora: time): bool")},
+		{ID: "el-role", Type: "class", Name: "Role", Position: pos(40, 40),
+			Attributes: members("+ name: string")},
+		{ID: "el-userstatus", Type: "enum", Name: "UserStatus", Position: pos(40, 320),
+			Literals: []string{"ACTIVE", "BLOCKED", "PENDING"}},
+		{ID: "el-authservice", Type: "class", Name: "AuthService", Stereotype: "service", Position: pos(720, 320),
+			ComponentID: "node-core-api",
+			Attributes:  members("- issuer: TokenIssuer"),
+			Operations:  members("+ login(email: string, senha: string): Session", "+ logout(sessionId: UUID)")},
+		{ID: "el-tokenissuer", Type: "interface", Name: "TokenIssuer", Position: pos(360, 320),
+			Documentation: "Implementada com JWT (ADR-001).",
+			Operations:    members("+ issue(user: User): string", "+ verify(token: string): Claims")},
+	}
+	class.Relations = []model.UMLRelation{
+		{ID: "rel-1", Type: "composition", Source: "el-session", Target: "el-user",
+			SourceMultiplicity: "0..*", TargetMultiplicity: "1", Name: "sessões"},
+		{ID: "rel-2", Type: "association", Source: "el-user", Target: "el-role",
+			SourceMultiplicity: "*", TargetMultiplicity: "1..*", Name: "possui"},
+		{ID: "rel-3", Type: "dependency", Source: "el-user", Target: "el-userstatus"},
+		{ID: "rel-4", Type: "dependency", Source: "el-authservice", Target: "el-tokenissuer", Name: "usa"},
+		{ID: "rel-5", Type: "dependency", Source: "el-authservice", Target: "el-session", Name: "cria"},
+	}
+
+	// Sequência: fluxo principal do CDU001.
+	seq := model.NewUMLDiagram("cdu001-autenticar-usuario", model.UMLKindSequence, "CDU001 — Autenticar usuário")
+	seq.Description = "Fluxo principal e exceção de credenciais inválidas do CDU001."
+	seq.Elements = []model.UMLElement{
+		{ID: "el-usuario", Type: "lifeline", Name: "Usuário", LifelineKind: "actor", Position: pos(40, 40)},
+		{ID: "el-web-app", Type: "lifeline", Name: "Web App", LifelineKind: "boundary", Position: pos(240, 40),
+			ComponentID: "node-web-app"},
+		{ID: "el-auth-service", Type: "lifeline", Name: "Auth Service", LifelineKind: "control", Position: pos(440, 40),
+			ComponentID: "node-core-api"},
+		{ID: "el-auth-db", Type: "lifeline", Name: "Auth DB", LifelineKind: "database", Position: pos(640, 40),
+			ComponentID: "node-postgres"},
+		{ID: "el-credenciais-invalidas", Type: "fragment", Name: "Retorna 401 genérico", Operator: "alt",
+			Guard: "credenciais inválidas", Position: pos(220, 420), Width: 460, Height: 120},
+	}
+	seq.Relations = []model.UMLRelation{
+		{ID: "rel-1", Type: "message", Source: "el-usuario", Target: "el-web-app", Name: "informa e-mail e senha", Order: 1},
+		{ID: "rel-2", Type: "message", Source: "el-web-app", Target: "el-auth-service", Name: "POST /api/v1/auth/login", Order: 2},
+		{ID: "rel-3", Type: "message", Source: "el-auth-service", Target: "el-auth-db", Name: "consulta usuário por e-mail", Order: 3},
+		{ID: "rel-4", Type: "message", Source: "el-auth-db", Target: "el-auth-service", Name: "hash da senha", MessageKind: "reply", Order: 4},
+		{ID: "rel-5", Type: "message", Source: "el-auth-service", Target: "el-auth-service", Name: "emite JWT (1h)", Order: 5},
+		{ID: "rel-6", Type: "message", Source: "el-auth-service", Target: "el-web-app", Name: "200 {token, expires_in}", MessageKind: "reply", Order: 6},
+		{ID: "rel-7", Type: "message", Source: "el-web-app", Target: "el-usuario", Name: "redireciona ao painel", MessageKind: "reply", Order: 7},
+	}
+
+	// Estados: ciclo de vida da sessão JWT.
+	state := model.NewUMLDiagram("ciclo-de-vida-da-sessao", model.UMLKindState, "Ciclo de vida da sessão")
+	state.Description = "Estados de uma sessão emitida pelo CDU001."
+	state.Elements = []model.UMLElement{
+		{ID: "el-inicio", Type: "initial", Position: pos(40, 143)},
+		{ID: "el-ativa", Type: "state", Name: "Ativa", Position: pos(240, 120), Entry: "emite JWT", Do: "valida token a cada requisição"},
+		{ID: "el-expirada", Type: "state", Name: "Expirada", Position: pos(620, 20)},
+		{ID: "el-revogada", Type: "state", Name: "Revogada", Position: pos(620, 220), Entry: "adiciona à lista de bloqueio (Redis)"},
+		{ID: "el-fim", Type: "final", Position: pos(940, 141)},
+	}
+	state.Relations = []model.UMLRelation{
+		{ID: "rel-1", Type: "transition", Source: "el-inicio", Target: "el-ativa", Trigger: "login bem-sucedido"},
+		{ID: "rel-2", Type: "transition", Source: "el-ativa", Target: "el-expirada", Trigger: "tempo esgotado", Guard: "agora > expiresAt"},
+		{ID: "rel-3", Type: "transition", Source: "el-ativa", Target: "el-revogada", Trigger: "logout", Effect: "revoga token"},
+		{ID: "rel-4", Type: "transition", Source: "el-expirada", Target: "el-fim"},
+		{ID: "rel-5", Type: "transition", Source: "el-revogada", Target: "el-fim"},
+	}
+
+	return []*model.UMLDiagram{useCases, class, seq, state}
 }
 
 func starterADR() *model.ADR {

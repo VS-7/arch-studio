@@ -241,6 +241,93 @@ export interface TaskBoard {
   tasks: Task[]
 }
 
+// ---------------------------------------------------------------------------
+// Diagramas UML (.arch/diagrams/{usecase,class,sequence,state}/<id>.json)
+// ---------------------------------------------------------------------------
+
+export type UMLKind = 'usecase' | 'class' | 'sequence' | 'state'
+
+export type UMLElementType =
+  | 'actor' | 'usecase' | 'boundary' | 'note'
+  | 'class' | 'interface' | 'enum' | 'package'
+  | 'lifeline' | 'fragment'
+  | 'state' | 'initial' | 'final' | 'choice' | 'fork' | 'join' | 'history'
+
+export type UMLRelationType =
+  | 'association' | 'directed_association' | 'include' | 'extend' | 'generalization'
+  | 'realization' | 'dependency' | 'aggregation' | 'composition'
+  | 'message' | 'transition' | 'note_link'
+
+export type Visibility = '+' | '-' | '#' | '~'
+export type MessageKind = 'sync' | 'async' | 'reply' | 'create' | 'destroy'
+export type LifelineKind = 'participant' | 'actor' | 'boundary' | 'control' | 'entity' | 'database'
+export type FragmentOperator = 'alt' | 'opt' | 'loop' | 'par' | 'break' | 'critical' | 'ref'
+
+export interface UMLMember {
+  name: string
+  type?: string
+  visibility?: Visibility
+  static?: boolean
+  abstract?: boolean
+  default?: string
+  params?: string
+}
+
+export interface UMLElement {
+  id: string
+  type: UMLElementType
+  name: string
+  position: Position
+  width?: number
+  height?: number
+  parent_id?: string
+  stereotype?: string
+  documentation?: string
+  abstract?: boolean
+  attributes?: UMLMember[]
+  operations?: UMLMember[]
+  literals?: string[]
+  entry?: string
+  do?: string
+  exit?: string
+  lifeline_kind?: LifelineKind
+  operator?: FragmentOperator
+  guard?: string
+  use_case?: string
+  component_id?: string
+}
+
+export interface UMLRelation {
+  id: string
+  type: UMLRelationType
+  source: string
+  target: string
+  name?: string
+  source_multiplicity?: string
+  target_multiplicity?: string
+  source_role?: string
+  target_role?: string
+  message_kind?: MessageKind
+  order?: number
+  trigger?: string
+  guard?: string
+  effect?: string
+  documentation?: string
+}
+
+export interface UMLDiagram {
+  id: string
+  kind: UMLKind
+  name: string
+  description?: string
+  version: string
+  last_modified: string
+  viewport: Viewport
+  elements: UMLElement[]
+  relations: UMLRelation[]
+  file?: string
+}
+
 export interface Snapshot {
   manifest: Manifest
   diagram: Diagram
@@ -252,6 +339,7 @@ export interface Snapshot {
   tasks: TaskBoard
   mermaid: string
   ai_prd_exists: boolean
+  uml_diagrams: UMLDiagram[]
 }
 
 export interface Finding {

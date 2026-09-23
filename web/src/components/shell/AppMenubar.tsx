@@ -1,0 +1,140 @@
+// Barra de menus (Arquivo, Editar, Exibir, Modelo, Ferramentas, Ajuda), como a
+// do StarUML. Cada item só dispara callbacks; o estado vive no Shell.
+
+import {
+  Bot, Code2, Download, FileImage, FilePlus2, Keyboard, Maximize, Monitor, Moon, Network, Plug,
+  Presentation, ShieldCheck, Sparkles, Sun, Trash2, Wand2, ZoomIn, ZoomOut,
+} from 'lucide-react'
+import type { ThemePreference } from '../../lib/theme'
+import type { UMLKind } from '../../lib/types'
+import { KIND_META, UML_KINDS } from '../../lib/umlMeta'
+import {
+  Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarLabel, MenubarMenu, MenubarSeparator,
+  MenubarShortcut, MenubarSub, MenubarSubContent, MenubarSubTrigger, MenubarTrigger,
+} from '../ui/menubar'
+import { KindGlyph } from '../uml/UmlGlyph'
+
+export interface MenuActions {
+  newDiagram: (kind: UMLKind) => void
+  generateUseCases: () => void
+  exportImage: ((format: 'png' | 'svg') => void) | null
+  exportMermaid: (() => void) | null
+  generatePRD: () => void
+  deleteSelection: (() => void) | null
+  fit: (() => void) | null
+  zoomIn: (() => void) | null
+  zoomOut: (() => void) | null
+  autoLayout: (() => void) | null
+  importMermaid: (() => void) | null
+  validate: () => void
+  mcp: () => void
+  pitch: () => void
+  shortcuts: () => void
+  about: () => void
+}
+
+export function AppMenubar({ actions, theme, onTheme, panels, onPanels, executive, onExecutive, archActive }: {
+  actions: MenuActions
+  theme: ThemePreference
+  onTheme: (t: ThemePreference) => void
+  panels: { left: boolean; right: boolean }
+  onPanels: (p: { left: boolean; right: boolean }) => void
+  executive: boolean
+  onExecutive: (v: boolean) => void
+  archActive: boolean
+}) {
+  return (
+    <Menubar>
+      <MenubarMenu>
+        <MenubarTrigger>Arquivo</MenubarTrigger>
+        <MenubarContent>
+          <MenubarSub>
+            <MenubarSubTrigger><FilePlus2 />Novo diagrama</MenubarSubTrigger>
+            <MenubarSubContent>
+              {UML_KINDS.map((k) => (
+                <MenubarItem key={k} onSelect={() => actions.newDiagram(k)}>
+                  <KindGlyph kind={k} size={14} />{KIND_META[k].label}
+                </MenubarItem>
+              ))}
+            </MenubarSubContent>
+          </MenubarSub>
+          <MenubarItem onSelect={actions.generateUseCases}><Sparkles />Gerar casos de uso a partir das fichas</MenubarItem>
+          <MenubarSeparator />
+          <MenubarSub>
+            <MenubarSubTrigger disabled={!actions.exportImage}><FileImage />Exportar diagrama</MenubarSubTrigger>
+            <MenubarSubContent>
+              <MenubarItem onSelect={() => actions.exportImage?.('png')}>PNG (2x)</MenubarItem>
+              <MenubarItem onSelect={() => actions.exportImage?.('svg')}>SVG</MenubarItem>
+            </MenubarSubContent>
+          </MenubarSub>
+          <MenubarItem disabled={!actions.exportMermaid} onSelect={() => actions.exportMermaid?.()}>
+            <Code2 />Mermaid do diagrama…
+          </MenubarItem>
+          <MenubarSeparator />
+          <MenubarItem onSelect={actions.generatePRD}><Bot />Gerar AI-PRD</MenubarItem>
+        </MenubarContent>
+      </MenubarMenu>
+
+      <MenubarMenu>
+        <MenubarTrigger>Editar</MenubarTrigger>
+        <MenubarContent>
+          <MenubarItem disabled={!actions.deleteSelection} onSelect={() => actions.deleteSelection?.()} variant="destructive">
+            <Trash2 />Excluir seleção<MenubarShortcut>Del</MenubarShortcut>
+          </MenubarItem>
+        </MenubarContent>
+      </MenubarMenu>
+
+      <MenubarMenu>
+        <MenubarTrigger>Exibir</MenubarTrigger>
+        <MenubarContent>
+          <MenubarCheckboxItem checked={panels.left} onCheckedChange={(v) => onPanels({ ...panels, left: v })}>
+            Toolbox<MenubarShortcut>Ctrl+B</MenubarShortcut>
+          </MenubarCheckboxItem>
+          <MenubarCheckboxItem checked={panels.right} onCheckedChange={(v) => onPanels({ ...panels, right: v })}>
+            Model Explorer e Editor<MenubarShortcut>Ctrl+J</MenubarShortcut>
+          </MenubarCheckboxItem>
+          <MenubarSeparator />
+          <MenubarItem disabled={!actions.fit} onSelect={() => actions.fit?.()}><Maximize />Ajustar à tela<MenubarShortcut>Shift+1</MenubarShortcut></MenubarItem>
+          <MenubarItem disabled={!actions.zoomIn} onSelect={() => actions.zoomIn?.()}><ZoomIn />Aproximar<MenubarShortcut>+</MenubarShortcut></MenubarItem>
+          <MenubarItem disabled={!actions.zoomOut} onSelect={() => actions.zoomOut?.()}><ZoomOut />Afastar<MenubarShortcut>−</MenubarShortcut></MenubarItem>
+          <MenubarSeparator />
+          <MenubarCheckboxItem disabled={!archActive} checked={executive} onCheckedChange={onExecutive}>
+            Visão executiva (arquitetura)
+          </MenubarCheckboxItem>
+          <MenubarSeparator />
+          <MenubarLabel>Tema</MenubarLabel>
+          <MenubarCheckboxItem checked={theme === 'light'} onCheckedChange={() => onTheme('light')}><Sun />Claro</MenubarCheckboxItem>
+          <MenubarCheckboxItem checked={theme === 'dark'} onCheckedChange={() => onTheme('dark')}><Moon />Escuro</MenubarCheckboxItem>
+          <MenubarCheckboxItem checked={theme === 'system'} onCheckedChange={() => onTheme('system')}><Monitor />Sistema</MenubarCheckboxItem>
+        </MenubarContent>
+      </MenubarMenu>
+
+      <MenubarMenu>
+        <MenubarTrigger>Modelo</MenubarTrigger>
+        <MenubarContent>
+          <MenubarItem onSelect={actions.validate}><ShieldCheck />Validar arquitetura…</MenubarItem>
+          <MenubarSeparator />
+          <MenubarItem disabled={!actions.autoLayout} onSelect={() => actions.autoLayout?.()}><Wand2 />Reorganizar arquitetura</MenubarItem>
+          <MenubarItem disabled={!actions.importMermaid} onSelect={() => actions.importMermaid?.()}><Network />Mermaid da arquitetura…</MenubarItem>
+        </MenubarContent>
+      </MenubarMenu>
+
+      <MenubarMenu>
+        <MenubarTrigger>Ferramentas</MenubarTrigger>
+        <MenubarContent>
+          <MenubarItem onSelect={actions.mcp}><Plug />Conectar agente de IA (MCP)…</MenubarItem>
+          <MenubarItem onSelect={actions.pitch}><Presentation />Modo apresentação</MenubarItem>
+          <MenubarItem onSelect={actions.generatePRD}><Download />Gerar AI-PRD</MenubarItem>
+        </MenubarContent>
+      </MenubarMenu>
+
+      <MenubarMenu>
+        <MenubarTrigger>Ajuda</MenubarTrigger>
+        <MenubarContent>
+          <MenubarItem onSelect={actions.shortcuts}><Keyboard />Atalhos de teclado</MenubarItem>
+          <MenubarItem onSelect={actions.about}>Sobre o ArchCode Studio</MenubarItem>
+        </MenubarContent>
+      </MenubarMenu>
+    </Menubar>
+  )
+}

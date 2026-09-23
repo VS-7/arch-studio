@@ -1,7 +1,7 @@
 // Package prd implementa o Compilador de PRD para Agentes de IA (RF019–RF022).
 //
-// Ele consolida diagrama, contratos de API, requisitos, casos de uso e ADRs em
-// dois artefatos complementares:
+// Ele consolida diagrama, contratos de API, requisitos, casos de uso, modelos
+// UML e ADRs em dois artefatos complementares:
 //
 //	docs/ai-prd.md   — documento legível, hiper-estruturado, consumido por LLMs
 //	.arch/tasks.json — espelho legível por máquina, usado para rastrear progresso
@@ -67,6 +67,7 @@ type Input struct {
 	UseCases     []model.UseCase
 	ADRs         []model.ADR
 	Endpoints    *model.EndpointsSpec
+	UMLDiagrams  []model.UMLDiagram
 	Previous     *model.TaskBoard
 }
 
@@ -778,17 +779,33 @@ func render(in Input, opts Options, stack string, board *model.TaskBoard, invari
 		b.WriteString("\n")
 	}
 
-	// 7. ADRs
+	// 7. Modelos UML — entram no hash de integridade junto com o restante do
+	// documento, de modo que mudar um diagrama muda o hash.
+	if len(in.UMLDiagrams) > 0 {
+		b.WriteString("## 7. UML MODELS\n\n")
+		b.WriteString("Modelos detalhados de comportamento e estrutura. Implemente classes, mensagens e transições exatamente como modelados; `component_id` aponta o componente do diagrama macro que os realiza.\n\n")
+		for _, d := range in.UMLDiagrams {
+			fmt.Fprintf(&b, "### %s (%s)\n\n", d.Name, d.Kind)
+			if d.Description != "" {
+				fmt.Fprintf(&b, "%s\n\n", oneLine(d.Description))
+			}
+			b.WriteString("```mermaid\n")
+			b.WriteString(strings.TrimRight(mermaid.ExportUML(&d), "\n"))
+			b.WriteString("\n```\n\n")
+		}
+	}
+
+	// 8. ADRs
 	if len(in.ADRs) > 0 {
-		b.WriteString("## 7. ARCHITECTURE DECISIONS (ADR)\n\n")
+		b.WriteString("## 8. ARCHITECTURE DECISIONS (ADR)\n\n")
 		for _, adr := range in.ADRs {
 			fmt.Fprintf(&b, "- **%s — %s** (%s): %s\n", adr.ID, adr.Title, orDash(adr.Status), oneLine(firstSentence(adr.Decision)))
 		}
 		b.WriteString("\n")
 	}
 
-	// 8. Protocolo do agente
-	b.WriteString("## 8. AGENT EXECUTION PROTOCOL\n\n")
+	// 9. Protocolo do agente
+	b.WriteString("## 9. AGENT EXECUTION PROTOCOL\n\n")
 	b.WriteString("1. Chame `get_implementation_tasks` com `status: \"pending\"` e pegue a primeira tarefa cujas dependências já estejam `completed`.\n")
 	b.WriteString("2. Chame `mark_task_status` com `in_progress` antes de escrever código.\n")
 	b.WriteString("3. Implemente somente o escopo daquela tarefa, respeitando todos os invariantes da seção 1.\n")

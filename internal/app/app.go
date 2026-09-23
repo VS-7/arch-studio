@@ -860,6 +860,7 @@ func (a *App) GenerateAIPRD(opts prd.Options, source string) (*PRDResult, error)
 		UseCases:     snap.UseCases,
 		ADRs:         snap.ADRs,
 		Endpoints:    snap.Endpoints,
+		UMLDiagrams:  snap.UMLDiagrams,
 		Previous:     snap.Tasks,
 	}, opts)
 

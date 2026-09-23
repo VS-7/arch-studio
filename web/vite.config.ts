@@ -1,3 +1,4 @@
+import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -6,6 +7,9 @@ import tailwindcss from '@tailwindcss/vite'
 // binário final via embed.FS (RNF002 — binário único, sem Node.js no usuário).
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+  },
   build: {
     outDir: '../internal/webui/dist',
     emptyOutDir: true,

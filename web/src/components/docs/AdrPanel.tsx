@@ -47,7 +47,7 @@ export function AdrPanel({ snapshot }: { snapshot: Snapshot }) {
             {snapshot.adrs.map((adr) => (
               <li key={adr.id} className="group rounded-lg border border-app px-3 py-2.5 transition-colors hover:surface-3">
                 <div className="flex items-start gap-2.5">
-                  <span className="mt-0.5 font-mono text-[11px] font-bold text-amber-400">{adr.id}</span>
+                  <span className="mt-0.5 font-mono text-[11px] font-bold text-warning">{adr.id}</span>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-[13px] font-semibold text-app">{adr.title}</p>
@@ -61,7 +61,7 @@ export function AdrPanel({ snapshot }: { snapshot: Snapshot }) {
                   </div>
                   <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                     <Button variant="ghost" size="icon" onClick={() => setEditing(adr)} aria-label="Editar"><Pencil size={13} /></Button>
-                    <Button variant="ghost" size="icon" className="text-rose-400" aria-label="Remover"
+                    <Button variant="ghost" size="icon" className="text-destructive" aria-label="Remover"
                       onClick={() => void remove(adr.id)}><Trash2 size={13} /></Button>
                   </div>
                 </div>

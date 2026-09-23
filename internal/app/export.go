@@ -359,6 +359,7 @@ type ContextSummary struct {
 	Requirements []string          `json:"requirements,omitempty"`
 	UseCases     []string          `json:"use_cases,omitempty"`
 	ADRs         []string          `json:"adrs,omitempty"`
+	UMLDiagrams  []string          `json:"uml_diagrams,omitempty"`
 	Pricing      *pricingBrief     `json:"pricing,omitempty"`
 	Progress     *progressBrief    `json:"progress,omitempty"`
 	Warnings     []string          `json:"warnings,omitempty"`
@@ -440,12 +441,18 @@ func (a *App) ContextSummary(includePricing bool) (*ContextSummary, error) {
 		sum.ADRs = append(sum.ADRs, fmt.Sprintf("%s: %s", adr.ID, adr.Title))
 	}
 
+	for _, d := range snap.UMLDiagrams {
+		sum.UMLDiagrams = append(sum.UMLDiagrams, fmt.Sprintf("%s [%s] %s — %d elementos, %d relações",
+			d.ID, d.Kind, d.Name, len(d.Elements), len(d.Relations)))
+	}
+
 	sum.Counts["components"] = len(sum.Components)
 	sum.Counts["connections"] = len(snap.Diagram.Edges)
 	sum.Counts["endpoints"] = len(snap.Endpoints.Endpoints)
 	sum.Counts["requirements"] = len(snap.Requirements.Requirements)
 	sum.Counts["use_cases"] = len(snap.UseCases)
 	sum.Counts["adrs"] = len(snap.ADRs)
+	sum.Counts["uml_diagrams"] = len(snap.UMLDiagrams)
 
 	if len(snap.Tasks.Tasks) > 0 {
 		completed := 0

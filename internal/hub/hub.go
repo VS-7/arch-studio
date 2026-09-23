@@ -27,6 +27,7 @@ const (
 	EventNodeRemoved = "node_removed"
 	EventEdgeAdded   = "edge_added"
 	EventPRD         = "ai_prd_generated"
+	EventUML         = "uml_changed"
 	EventError       = "error"
 )
 

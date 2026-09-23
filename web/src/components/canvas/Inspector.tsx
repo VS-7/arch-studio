@@ -256,7 +256,7 @@ function NodeInspector({ node, snapshot, onClose, onFocus }: {
 
       <footer className="flex items-center gap-2 border-t border-app px-3.5 py-2.5">
         <Button variant="primary" size="sm" onClick={() => void save()} loading={saving}>Salvar</Button>
-        <Button variant="ghost" size="sm" icon={Trash2} onClick={() => void remove()} className="ml-auto text-rose-400">
+        <Button variant="ghost" size="sm" icon={Trash2} onClick={() => void remove()} className="ml-auto text-destructive">
           Remover
         </Button>
       </footer>
@@ -384,7 +384,7 @@ function EdgeInspector({ edge, snapshot, onClose }: { edge: ArchEdge; snapshot: 
             <div className="space-y-1">
               {linkedEndpoints.map((ep) => (
                 <div key={ep.id} className="flex items-center gap-2 rounded-md surface-3 px-2 py-1">
-                  <span className="font-mono text-[10px] font-bold text-sky-400">{ep.method}</span>
+                  <span className="font-mono text-[10px] font-bold text-primary">{ep.method}</span>
                   <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-app">{ep.path}</span>
                 </div>
               ))}
@@ -395,7 +395,7 @@ function EdgeInspector({ edge, snapshot, onClose }: { edge: ArchEdge; snapshot: 
 
       <footer className="flex items-center gap-2 border-t border-app px-3.5 py-2.5">
         <Button variant="primary" size="sm" onClick={() => void save()} loading={saving}>Salvar</Button>
-        <Button variant="ghost" size="sm" icon={Unlink} onClick={() => void remove()} className="ml-auto text-rose-400">
+        <Button variant="ghost" size="sm" icon={Unlink} onClick={() => void remove()} className="ml-auto text-destructive">
           Desconectar
         </Button>
       </footer>

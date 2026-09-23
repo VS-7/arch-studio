@@ -26,20 +26,23 @@ import (
 const instructions = `ArchCode Studio — arquitetura de software como código.
 
 Este servidor dá acesso de leitura e escrita à arquitetura viva de um projeto:
-diagrama de componentes, contratos de API, requisitos, casos de uso, ADRs,
-estimativas de esforço/custo e a fila de tarefas de implementação.
+diagrama de componentes, diagramas UML (casos de uso, classes, sequência e
+estados), contratos de API, requisitos, casos de uso, ADRs, estimativas de
+esforço/custo e a fila de tarefas de implementação.
 
 Fluxo recomendado:
  1. get_system_context            — entenda o sistema antes de qualquer coisa.
  2. add_architecture_node / connect_nodes / upsert_requirement / upsert_use_case
                                   — modele o que foi pedido.
- 3. validate_architecture_rules   — confira se a arquitetura está consistente.
- 4. generate_ai_prd               — compile o blueprint de implementação.
- 5. get_implementation_tasks      — pegue a próxima tarefa pronta (ready=true).
- 6. mark_task_status              — registre progresso ao concluir cada tarefa.
+ 3. create_uml_diagram / add_uml_element / add_uml_relation / generate_use_case_diagram
+                                  — detalhe domínio, fluxos e ciclos de vida em UML.
+ 4. validate_architecture_rules   — confira se a arquitetura está consistente.
+ 5. generate_ai_prd               — compile o blueprint de implementação.
+ 6. get_implementation_tasks      — pegue a próxima tarefa pronta (ready=true).
+ 7. mark_task_status              — registre progresso ao concluir cada tarefa.
 
 Regras:
- - NUNCA edite .arch/diagrams/macro.json diretamente: use as ferramentas.
+ - NUNCA edite .arch/diagrams/macro.json nem os JSON UML diretamente: use as ferramentas.
    Elas preservam as coordenadas dos nós já posicionados pelo usuário.
  - Todo componente novo deve ser justificado por um requisito ou caso de uso.
  - Toda aresta HTTP deve declarar seus endpoints, que alimentam api/endpoints.yaml.`
@@ -61,6 +64,7 @@ func New(d Deps) *server.MCPServer {
 		server.WithInstructions(instructions),
 	)
 	registerTools(s, d.App)
+	registerUMLTools(s, d.App)
 	registerPrompts(s)
 	return s
 }
@@ -106,7 +110,7 @@ func registerTools(s *server.MCPServer, a *app.App) {
 
 	// --- 1. get_system_context ----------------------------------------------
 	s.AddTool(mcp.NewTool("get_system_context",
-		mcp.WithDescription("Retorna a visão macro da arquitetura: componentes, conexões, endpoints, requisitos, casos de uso e progresso. Chame isto ANTES de qualquer outra coisa para não alucinar contexto."),
+		mcp.WithDescription("Retorna a visão macro da arquitetura: componentes, conexões, endpoints, requisitos, casos de uso, diagramas UML e progresso. Chame isto ANTES de qualquer outra coisa para não alucinar contexto."),
 		mcp.WithTitleAnnotation("Contexto do sistema"),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithBoolean("include_pricing",
@@ -143,6 +147,12 @@ func registerTools(s *server.MCPServer, a *app.App) {
 				tech = "tecnologia não definida"
 			}
 			lines = append(lines, fmt.Sprintf("- %s [%s/%s] %s — %s", c.Label, c.Type, c.Tier, c.ID, tech))
+		}
+		if len(sum.UMLDiagrams) > 0 {
+			lines = append(lines, "Diagramas UML:")
+			for _, u := range sum.UMLDiagrams {
+				lines = append(lines, "- "+u)
+			}
 		}
 		if sum.Progress != nil {
 			lines = append(lines, fmt.Sprintf("Progresso de implementação: %d%% (%d/%d tarefas)",

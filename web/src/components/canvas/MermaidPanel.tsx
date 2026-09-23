@@ -28,7 +28,7 @@ export function MermaidPanel({ open, onClose, snapshot }: {
         if (!cancelled && preview.current) preview.current.innerHTML = svg
       } catch (err) {
         if (!cancelled && preview.current) {
-          preview.current.innerHTML = `<p class="text-xs text-rose-400">Mermaid inválido: ${(err as Error).message}</p>`
+          preview.current.innerHTML = `<p class="text-xs text-destructive">Mermaid inválido: ${(err as Error).message}</p>`
         }
       }
     })()
@@ -89,8 +89,8 @@ export function MermaidPanel({ open, onClose, snapshot }: {
 
       {tab === 'view' ? (
         <div className="space-y-3">
-          <div ref={preview} className="overflow-x-auto rounded-xl border border-app p-4" />
-          <pre className="max-h-56 overflow-auto rounded-xl surface-3 p-3 font-mono text-[11px] leading-relaxed text-muted-app">
+          <div ref={preview} className="overflow-x-auto rounded-lg border border-app p-4" />
+          <pre className="max-h-56 overflow-auto rounded-lg surface-3 p-3 font-mono text-[11px] leading-relaxed text-muted-app">
             {snapshot.mermaid || '// diagrama vazio'}
           </pre>
         </div>
