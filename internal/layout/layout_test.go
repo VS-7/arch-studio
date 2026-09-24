@@ -71,12 +71,16 @@ func TestAutoLayoutOrdenaPorDependencia(t *testing.T) {
 	}
 	AutoLayout(d)
 
-	x := map[string]float64{}
+	// O fluxo segue a dependência no eixo escolhido (horizontal ou vertical).
+	x, y := map[string]float64{}, map[string]float64{}
 	for _, n := range d.Nodes {
-		x[n.ID] = n.Position.X
+		x[n.ID], y[n.ID] = n.Position.X, n.Position.Y
 	}
-	if !(x["web"] < x["api"] && x["api"] < x["db"]) {
-		t.Errorf("camadas fora de ordem: web=%v api=%v db=%v", x["web"], x["api"], x["db"])
+	horizontal := x["web"] < x["api"] && x["api"] < x["db"]
+	vertical := y["web"] < y["api"] && y["api"] < y["db"]
+	if !horizontal && !vertical {
+		t.Errorf("camadas fora de ordem: web=%v,%v api=%v,%v db=%v,%v",
+			x["web"], y["web"], x["api"], y["api"], x["db"], y["db"])
 	}
 }
 
@@ -93,5 +97,63 @@ func TestAutoLayoutToleraCiclos(t *testing.T) {
 		if n.Position.X == 0 && n.Position.Y == 0 {
 			t.Errorf("nó %s ficou sem posição", n.ID)
 		}
+	}
+}
+
+// Grupos são contêineres: os membros ficam juntos e o grupo passa a envolvê-los.
+func TestAutoLayoutGrupoEnvolveMembros(t *testing.T) {
+	d := model.NewDiagram()
+	d.Nodes = []model.Node{
+		node("web", 0, 0, "client"),
+		node("api", 0, 200, "compute"),
+		node("worker", 0, 400, "compute"),
+		node("db", 0, 600, "database"),
+		{ID: "grp", Type: "group", Position: model.Position{X: -50, Y: 150}, Width: 400, Height: 500,
+			Data: model.NodeData{Label: "Backend"}},
+	}
+	d.Nodes[1].ParentID = "grp" // por parentId
+	// worker: dentro do grupo só pela geometria.
+	d.Edges = []model.Edge{
+		{ID: "e1", Source: "web", Target: "api"},
+		{ID: "e2", Source: "api", Target: "worker"},
+		{ID: "e3", Source: "worker", Target: "db"},
+	}
+	AutoLayout(d)
+
+	g := d.NodeByID("grp")
+	inside := func(id string) bool {
+		n := d.NodeByID(id)
+		return n.Position.X >= g.Position.X && n.Position.Y >= g.Position.Y &&
+			n.Position.X+NodeWidth <= g.Position.X+g.Width && n.Position.Y+NodeHeight <= g.Position.Y+g.Height
+	}
+	for _, id := range []string{"api", "worker"} {
+		if !inside(id) {
+			t.Errorf("%s ficou fora do grupo", id)
+		}
+	}
+	for _, id := range []string{"web", "db"} {
+		if inside(id) {
+			t.Errorf("%s não deveria estar dentro do grupo", id)
+		}
+	}
+}
+
+// Diagramas largos passam a caber melhor na página que o layout em linha.
+func TestAutoLayoutCabeMelhorNaPagina(t *testing.T) {
+	d := model.NewDiagram()
+	ids := []string{"a", "b", "c", "d", "e", "f"}
+	for _, id := range ids {
+		d.Nodes = append(d.Nodes, node(id, 0, 0, "compute"))
+	}
+	for i := 1; i < len(ids); i++ {
+		d.Edges = append(d.Edges, model.Edge{ID: "e" + ids[i], Source: ids[i-1], Target: ids[i]})
+	}
+	AutoLayout(d)
+	minX, minY, maxX, maxY := Bounds(d)
+	w, h := maxX-minX, maxY-minY
+	scale := min(PageWidth/(w+128), PageHeight/(h+128))
+	// Em linha seriam 6*220+5*100 = 1820px de largura: escala 0,32.
+	if scale < 0.5 {
+		t.Errorf("cadeia de 6 nós deveria caber a ≥ 50%% na página, got %.2f (%.0fx%.0f)", scale, w, h)
 	}
 }

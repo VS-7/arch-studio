@@ -3,7 +3,7 @@
 
 import {
   Bot, ClipboardPaste, Code2, Copy, CopyPlus, Download, FileImage, FilePlus2, FolderOpen, FolderPlus, FolderX, History,
-  Keyboard, LayoutPanelLeft, Maximize,
+  Keyboard, LayoutGrid, LayoutPanelLeft, Maximize,
   Monitor, Moon, Network, PanelsTopLeft, Plug, Presentation, Redo2, Scissors, ShieldCheck, Sparkles,
   SquareDashedMousePointer, Sun, Trash2, Undo2, Wand2, ZoomIn, ZoomOut,
 } from 'lucide-react'
@@ -36,7 +36,9 @@ export interface MenuActions {
   fit: (() => void) | null
   zoomIn: (() => void) | null
   zoomOut: (() => void) | null
+  /** Reorganiza o diagrama ativo (arquitetura ou UML); null sem diagrama aberto. */
   autoLayout: (() => void) | null
+  autoLayoutAll: () => void
   importMermaid: (() => void) | null
   validate: () => void
   mcp: () => void
@@ -151,7 +153,11 @@ export function AppMenubar({ actions, theme, onTheme, panels, onPanels, executiv
         <MenubarContent>
           <MenubarItem onSelect={actions.validate}><ShieldCheck />Validar arquitetura…</MenubarItem>
           <MenubarSeparator />
-          <MenubarItem disabled={!actions.autoLayout} onSelect={() => actions.autoLayout?.()}><Wand2 />Reorganizar arquitetura</MenubarItem>
+          <MenubarItem disabled={!actions.autoLayout} onSelect={() => actions.autoLayout?.()}>
+            <Wand2 />Reorganizar diagrama<MenubarShortcut>Ctrl+Shift+L</MenubarShortcut>
+          </MenubarItem>
+          <MenubarItem onSelect={actions.autoLayoutAll}><LayoutGrid />Reorganizar todos os diagramas</MenubarItem>
+          <MenubarSeparator />
           <MenubarItem disabled={!actions.importMermaid} onSelect={() => actions.importMermaid?.()}><Network />Mermaid da arquitetura…</MenubarItem>
         </MenubarContent>
       </MenubarMenu>

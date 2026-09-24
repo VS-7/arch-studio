@@ -5,7 +5,7 @@
 # desktop (Wails v3, módulo em desktop/) com o mesmo frontend.
 
 BINARY      := archcode-studio
-VERSION     ?= 1.0.0
+VERSION     ?= 1.1.0
 LDFLAGS     := -s -w -X main.version=$(VERSION)
 GO          ?= go
 NPM         ?= npm

@@ -7,9 +7,11 @@ import (
 	"strings"
 
 	"github.com/archcode/studio/internal/hub"
+	"github.com/archcode/studio/internal/layout"
 	"github.com/archcode/studio/internal/mermaid"
 	"github.com/archcode/studio/internal/model"
 	"github.com/archcode/studio/internal/store"
+	"github.com/archcode/studio/internal/svgexport"
 )
 
 // ---------------------------------------------------------------------------
@@ -459,6 +461,11 @@ func (a *App) GenerateUseCaseDiagram(name, source string) (*model.UMLDiagram, er
 	}
 
 	model.SyncUseCaseDiagram(d, manifest.ProjectName, ucs)
+	if created {
+		// Diagrama novo não tem posições do usuário a preservar: já nasce
+		// organizado para o documento.
+		layout.UML(d, svgexport.Metrics{})
+	}
 	if err := a.saveUML(d); err != nil {
 		return nil, err
 	}

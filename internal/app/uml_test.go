@@ -1,7 +1,9 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -235,5 +237,46 @@ func TestGerarDiagramaDeCasosDeUso(t *testing.T) {
 	sum, _ := a.ContextSummary(false)
 	if sum.Counts["uml_diagrams"] != 1 || len(sum.UMLDiagrams) != 1 {
 		t.Errorf("get_system_context sem resumo UML: %+v", sum.UMLDiagrams)
+	}
+}
+
+// Um diagrama de casos de uso novo já nasce organizado para o documento; um
+// existente preserva as posições ao sincronizar (só "Reorganizar" as muda).
+func TestGerarCasosDeUsoNasceOrganizado(t *testing.T) {
+	a, _ := newTestApp(t)
+	for i, name := range []string{"Cadastrar paciente", "Agendar consulta", "Cancelar consulta", "Emitir recibo"} {
+		if _, _, err := a.UpsertUseCase(model.UseCase{
+			Code: fmt.Sprintf("CDU%03d", i+1), Name: name, Actors: []string{"Recepcionista"},
+		}, hub.SourceUI); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d, err := a.GenerateUseCaseDiagram("", hub.SourceUI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := json.Marshal(d.Elements)
+	laid, err := a.AutoLayoutUML(d.ID, hub.SourceUI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, _ := json.Marshal(laid.Elements)
+	if string(before) != string(after) {
+		t.Error("o diagrama gerado deveria já estar organizado (reorganizar não mudaria nada)")
+	}
+
+	// Mover um elemento e sincronizar de novo não desfaz a mudança do usuário.
+	moved := laid.Elements[0]
+	moved.Position = model.Position{X: 999, Y: 999}
+	laid.Elements[0] = moved
+	if err := a.ReplaceUMLDiagram(d.ID, laid, hub.SourceUI); err != nil {
+		t.Fatal(err)
+	}
+	again, err := a.GenerateUseCaseDiagram("", hub.SourceUI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if el := again.ElementByID(moved.ID); el == nil || el.Position != moved.Position {
+		t.Errorf("sincronizar moveu um elemento posicionado pelo usuário: %+v", el)
 	}
 }

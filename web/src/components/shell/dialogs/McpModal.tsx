@@ -45,6 +45,7 @@ export function McpModal({ open, onClose }: { open: boolean; onClose: () => void
             <li><code>add_architecture_node</code> / <code>connect_nodes</code> — modelar a arquitetura</li>
             <li><code>upsert_requirement</code> / <code>upsert_use_case</code> — justificar cada componente</li>
             <li><code>generate_use_case_diagram</code>, <code>create_uml_diagram</code>, <code>add_uml_element</code>, <code>add_uml_relation</code> — casos de uso, classes, sequência e estados</li>
+            <li><code>auto_layout_diagram</code> — organizar um diagrama recém-criado para caber no documento</li>
             <li><code>validate_architecture_rules</code> — corrigir os erros apontados</li>
             <li><code>generate_ai_prd</code> — compilar o blueprint em ordem topológica</li>
             <li><code>get_implementation_tasks</code> → codificar → <code>mark_task_status</code></li>

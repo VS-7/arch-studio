@@ -11,7 +11,7 @@ import {
   type Connection, type NodeChange, type ReactFlowInstance, type XYPosition,
 } from '@xyflow/react'
 import { toBlob, toSvg } from 'html-to-image'
-import { ArrowLeftRight, ClipboardPaste, Maximize, Pencil, Plus, SquareDashedMousePointer, Trash2 } from 'lucide-react'
+import { ArrowLeftRight, ClipboardPaste, Maximize, Pencil, Plus, SquareDashedMousePointer, Trash2, Wand2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../../lib/api'
 import { clipboard } from '../../lib/clipboard'
@@ -89,6 +89,8 @@ interface Props {
   onRename?: (id: string) => void
   /** Recebe os comandos do canvas; null ao desmontar. */
   onReady?: (handle: UmlCanvasHandle | null) => void
+  /** Reorganiza o diagrama inteiro (menu de contexto do canvas). */
+  onAutoLayout?: () => void
   onZoom?: (zoom: number) => void
   highlight?: string | null
 }
@@ -177,14 +179,15 @@ function findContainer(d: UMLDiagram, el: UMLElement, pos: XYPosition, sizes: Ma
 }
 
 export function UmlCanvas({
-  diagram, tool, onToolDone, selectedId, onSelect, onSelectionChange, onCreated, onRename, onReady, onZoom, highlight,
+  diagram, tool, onToolDone, selectedId, onSelect, onSelectionChange, onCreated, onRename, onReady, onAutoLayout, onZoom,
+  highlight,
 }: Props) {
   const toast = useToast()
   const run = useRunCommand()
   // Callbacks do Shell mudam a cada render; guardá-los em ref mantém os comandos
   // estáveis (senão onReady → setHandle → novo render → novos callbacks: laço).
-  const cb = useRef({ onSelect, onSelectionChange, onCreated, onRename, onToolDone, onReady })
-  cb.current = { onSelect, onSelectionChange, onCreated, onRename, onToolDone, onReady }
+  const cb = useRef({ onSelect, onSelectionChange, onCreated, onRename, onToolDone, onReady, onAutoLayout })
+  cb.current = { onSelect, onSelectionChange, onCreated, onRename, onToolDone, onReady, onAutoLayout }
   const [pending, setPending] = useState<string | null>(null)
   const [menu, setMenu] = useState<CanvasMenuState | null>(null)
   const [nodes, setNodes, onNodesChange] = useNodesState<UmlFlowNode>([])
@@ -455,6 +458,10 @@ export function UmlCanvas({
         { type: 'item', label: 'Colar', icon: <ClipboardPaste />, shortcut: 'Ctrl+V', disabled: !clip, onSelect: () => run(commands.paste) },
         { type: 'item', label: 'Selecionar tudo', icon: <SquareDashedMousePointer />, shortcut: 'Ctrl+A', onSelect: commands.selectAll },
         { type: 'item', label: 'Ajustar à tela', icon: <Maximize />, shortcut: 'Shift+1', onSelect: commands.fitAll },
+        ...(cb.current.onAutoLayout ? [
+          { type: 'separator' as const },
+          { type: 'item' as const, label: 'Reorganizar diagrama', icon: <Wand2 />, shortcut: 'Ctrl+Shift+L', onSelect: () => cb.current.onAutoLayout?.() },
+        ] : []),
       ],
     })
   }, [addItems, commands, instance, run])

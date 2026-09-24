@@ -87,13 +87,14 @@ O `init` cria uma arquitetura de exemplo funcional (Web App → Gateway → API 
 2. **Diagramas UML:**
    - Casos de uso, classes, sequência e estados — um JSON por diagrama em `.arch/diagrams/<tipo>/`, com espelho Mermaid e exportação PNG/SVG.
    - Diagrama de casos de uso gerado a partir das fichas de `docs/casos-de-uso/`, de forma idempotente.
+   - **Reorganizar** (menu **Modelo**, `Ctrl+Shift+L` ou o botão do Documento de Requisitos) redispõe o diagrama ativo — ou todos de uma vez — com espaçamento entre os elementos e na proporção da página A4, para as figuras do documento ficarem legíveis: casos de uso em grade com os atores nas laterais, classes e estados em camadas, sequência espaçada pelos rótulos das mensagens. `Ctrl+Z` (ou o *Desfazer* do aviso) volta atrás.
 
 3. **Documentação que se escreve sozinha:**
    - Requisitos (RF/RNF), casos de uso com fluxos e critérios Given-When-Then, ADRs no formato Nygard — cada um na sua aba.
    - **Documento de Requisitos formal** (capa, sumário, requisitos, CDUs, diagramas, rastreabilidade) montado a partir do projeto e exportado em **PDF, DOCX e Markdown**.
 
 4. **Nativo para agentes de IA (MCP):**
-   - 28 ferramentas atômicas via stdio ou SSE, com as mesmas regras de uma edição humana.
+   - 29 ferramentas atômicas via stdio ou SSE, com as mesmas regras de uma edição humana.
    - **Compilador de AI-PRD:** ordena as tarefas topologicamente (banco → domínio → serviços → integrações → interface → E2E), com dependências e critérios de aceite; os agentes marcam o progresso e o canvas acompanha em tempo real.
 
 5. **Precificação e proposta comercial:**
@@ -129,7 +130,7 @@ Com `archcode-studio serve` rodando, o transporte SSE fica em `http://127.0.0.1:
 | :--- | :--- |
 | **Contexto** | `get_system_context` · `get_architecture_summary` · `get_full_context` |
 | **Arquitetura** | `add_architecture_node` · `connect_nodes` · `update_node_metadata` · `remove_architecture_node` · `import_mermaid_diagram` · `validate_architecture_rules` |
-| **UML** | `list_uml_diagrams` · `get_uml_diagram` · `create_uml_diagram` · `add_uml_element` · `update_uml_element` · `add_uml_relation` · `remove_uml_item` · `generate_use_case_diagram` |
+| **UML** | `list_uml_diagrams` · `get_uml_diagram` · `create_uml_diagram` · `add_uml_element` · `update_uml_element` · `add_uml_relation` · `remove_uml_item` · `generate_use_case_diagram` · `auto_layout_diagram` |
 | **Documentação** | `upsert_requirement` · `upsert_use_case` · `upsert_adr` · `update_document_metadata` · `generate_requirements_document` |
 | **Implementação** | `generate_ai_prd` · `get_implementation_tasks` · `mark_task_status` |
 | **Negócio** | `calculate_project_estimate` · `generate_commercial_proposal` · `export_openapi` |

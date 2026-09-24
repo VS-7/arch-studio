@@ -135,13 +135,32 @@ function Shell() {
     } catch (err) { toast('error', errorMessage(err)) } finally { setGenerating(false) }
   }, [refresh, toast])
 
-  const autoLayout = useCallback(async () => {
+  // Reorganizar redispõe o diagrama inteiro para caber na página do Documento
+  // de Requisitos. Cada diagrama alterado é um passo de desfazer próprio.
+  const reorganize = useCallback(async () => {
+    const key = activeDiagram ? `uml:${activeDiagram.id}` : 'arch'
     try {
-      await api.autoLayout()
-      toast('success', 'Layout reorganizado', { label: 'Desfazer', onClick: () => void history.undo('arch') })
-      setTimeout(() => archHandle?.fitAll(), 250)
+      if (activeDiagram) await api.autoLayoutUML(activeDiagram.id)
+      else await api.autoLayout()
+      toast('success', 'Diagrama reorganizado', { label: 'Desfazer', onClick: () => void history.undo(key) })
+      setTimeout(() => (activeDiagram ? umlHandle : archHandle)?.fitAll(), 250)
     } catch (err) { toast('error', errorMessage(err)) }
-  }, [archHandle, history, toast])
+  }, [activeDiagram, archHandle, umlHandle, history, toast])
+
+  const reorganizeAll = useCallback(async () => {
+    try {
+      const res = await api.autoLayoutAll()
+      const keys = [...(res.architecture ? ['arch'] : []), ...res.diagrams.map((id) => `uml:${id}`)]
+      if (!keys.length) {
+        toast('info', 'Os diagramas já estavam organizados')
+        return
+      }
+      toast('success', keys.length === 1 ? '1 diagrama reorganizado' : `${keys.length} diagramas reorganizados`, {
+        label: 'Desfazer', onClick: () => void Promise.all(keys.map((k) => history.undo(k))),
+      })
+      setTimeout(() => (activeDiagram ? umlHandle : archHandle)?.fitAll(), 250)
+    } catch (err) { toast('error', errorMessage(err)) }
+  }, [activeDiagram, archHandle, umlHandle, history, toast])
 
   const generateUseCases = useCallback(async () => {
     try {
@@ -217,7 +236,8 @@ function Shell() {
     fit: commands?.fitAll ?? null,
     zoomIn: commands?.zoomIn ?? null,
     zoomOut: commands?.zoomOut ?? null,
-    autoLayout: () => { openTab({ type: 'arch' }); void autoLayout() },
+    autoLayout: archActive || activeDiagram ? () => void reorganize() : null,
+    autoLayoutAll: () => void reorganizeAll(),
     importMermaid: () => setDialog({ type: 'archMermaid' }),
     validate: () => setDialog({ type: 'lint' }),
     mcp: () => setDialog({ type: 'mcp' }),
@@ -315,6 +335,7 @@ function Shell() {
                 onSelect={(id, kind) => setSelection(id ? { scope: 'arch', kind, id } : null)}
                 onSelectionChange={(sel) => setMultiCount(sel.nodes.length + sel.edges.length)}
                 onReady={setArchHandle}
+                onAutoLayout={() => void reorganize()}
                 tool={tool}
                 onToolDone={() => setTool(SELECT_TOOL)}
                 onZoom={setZoom}
@@ -336,13 +357,14 @@ function Shell() {
                   layout.revealEditor()
                 }}
                 onReady={setUmlHandle}
+                onAutoLayout={() => void reorganize()}
                 onZoom={setZoom}
                 highlight={highlight}
               />
             )}
             {active?.type === 'view' && (
               <div className="h-full overflow-hidden bg-background">
-                {active.view === 'document' && <DocumentPanel snapshot={snapshot} />}
+                {active.view === 'document' && <DocumentPanel snapshot={snapshot} onReorganize={() => void reorganizeAll()} />}
                 {active.view === 'requirements' && <RequirementsPanel snapshot={snapshot} />}
                 {active.view === 'use-cases' && (
                   <UseCasesPanel key={useCaseFocus?.at ?? 'use-cases'} snapshot={snapshot} focusCode={useCaseFocus?.code} />

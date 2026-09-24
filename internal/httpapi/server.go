@@ -74,6 +74,7 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/diagram/edges", s.addEdge)
 	m.HandleFunc("DELETE /api/diagram/edges/{id}", s.deleteEdge)
 	m.HandleFunc("POST /api/diagram/autolayout", s.autoLayout)
+	m.HandleFunc("POST /api/autolayout", s.autoLayoutAll)
 	m.HandleFunc("POST /api/diagram/import-mermaid", s.importMermaid)
 	m.HandleFunc("GET /api/diagram/mermaid", s.getMermaid)
 
@@ -86,6 +87,7 @@ func (s *Server) routes() {
 	m.HandleFunc("PUT /api/uml/{id}", s.putUML)
 	m.HandleFunc("PATCH /api/uml/{id}", s.patchUML)
 	m.HandleFunc("DELETE /api/uml/{id}", s.deleteUML)
+	m.HandleFunc("POST /api/uml/{id}/autolayout", s.autoLayoutUML)
 	m.HandleFunc("POST /api/uml/{id}/elements", s.addUMLElement)
 	m.HandleFunc("PATCH /api/uml/{id}/elements/{eid}", s.updateUMLElement)
 	m.HandleFunc("DELETE /api/uml/{id}/elements/{eid}", s.deleteUMLElement)
@@ -324,6 +326,16 @@ func (s *Server) autoLayout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, d)
+}
+
+// autoLayoutAll reorganiza a arquitetura e todos os diagramas UML.
+func (s *Server) autoLayoutAll(w http.ResponseWriter, r *http.Request) {
+	res, err := s.app.AutoLayoutAll(hub.SourceUI)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 func (s *Server) importMermaid(w http.ResponseWriter, r *http.Request) {

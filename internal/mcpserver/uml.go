@@ -337,9 +337,42 @@ func registerUMLTools(s *server.MCPServer, a *app.App) {
 		return jsonResult(map[string]any{"status": "removed", "id": id, "item": item})
 	})
 
+	// --- auto_layout_diagram --------------------------------------------------
+	s.AddTool(mcp.NewTool("auto_layout_diagram",
+		mcp.WithDescription("Reorganiza um diagrama inteiro para caber numa página A4 do Documento de Requisitos, com espaçamento entre os elementos: casos de uso em grade dentro da fronteira com os atores nas laterais, classes e estados em camadas, sequência espaçada pelos rótulos das mensagens, arquitetura em camadas. Altera as posições de TODOS os elementos: use só quando o usuário pedir para reorganizar/organizar o layout ou logo depois de criar um diagrama novo do zero."),
+		mcp.WithTitleAnnotation("Reorganizar diagrama"),
+		mcp.WithIdempotentHintAnnotation(true),
+		mcp.WithString("diagram_id", mcp.Required(),
+			mcp.Description("Id do diagrama UML, 'macro' para a arquitetura ou 'all' para todos os diagramas do projeto.")),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		id, err := req.RequireString("diagram_id")
+		if err != nil {
+			return errResult(err)
+		}
+		switch id {
+		case "all":
+			res, err := a.AutoLayoutAll(hub.SourceAI)
+			if err != nil {
+				return errResult(err)
+			}
+			return jsonResult(map[string]any{"status": "reorganized", "architecture": res.Architecture, "diagrams": res.Diagrams})
+		case "macro":
+			d, err := a.AutoLayout(hub.SourceAI)
+			if err != nil {
+				return errResult(err)
+			}
+			return jsonResult(map[string]any{"status": "reorganized", "id": "macro", "nodes": len(d.Nodes)})
+		}
+		d, err := a.AutoLayoutUML(id, hub.SourceAI)
+		if err != nil {
+			return errResult(err)
+		}
+		return jsonResult(map[string]any{"status": "reorganized", "id": d.ID, "elements": len(d.Elements)})
+	})
+
 	// --- generate_use_case_diagram --------------------------------------------
 	s.AddTool(mcp.NewTool("generate_use_case_diagram",
-		mcp.WithDescription("Cria ou completa o diagrama de casos de uso (id 'casos-de-uso') a partir das fichas em docs/casos-de-uso: atores, um usecase por CDU dentro da fronteira do sistema e associações ator–caso de uso. Idempotente: preserva posições e só adiciona o que falta."),
+		mcp.WithDescription("Cria ou completa o diagrama de casos de uso (id 'casos-de-uso') a partir das fichas em docs/casos-de-uso: atores, um usecase por CDU dentro da fronteira do sistema e associações ator–caso de uso. Idempotente: preserva posições e só adiciona o que falta (um diagrama novo já nasce organizado; para reorganizar um existente, use auto_layout_diagram)."),
 		mcp.WithTitleAnnotation("Gerar diagrama de casos de uso"),
 		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithString("name", mcp.Description("Nome do diagrama (padrão 'Casos de Uso').")),

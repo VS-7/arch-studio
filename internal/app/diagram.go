@@ -518,24 +518,6 @@ func (a *App) pruneOrphanEndpoints(d *model.Diagram, source string) {
 	}
 }
 
-// AutoLayout reorganiza o canvas por camadas topológicas, a pedido do usuário.
-func (a *App) AutoLayout(source string) (*model.Diagram, error) {
-	a.tx.Lock()
-	defer a.tx.Unlock()
-
-	d, err := a.st.LoadDiagram()
-	if err != nil {
-		return nil, err
-	}
-	layout.AutoLayout(d)
-	if err := a.saveDiagram(d); err != nil {
-		return nil, err
-	}
-	a.emit(hub.Event{Type: hub.EventDiagram, Source: source, Path: store.FileMacroJSON,
-		Message: "Layout reorganizado automaticamente"})
-	return d, nil
-}
-
 // ImportMermaid substitui o diagrama a partir de um snippet Mermaid (RF007).
 func (a *App) ImportMermaid(src string, source string) (*model.Diagram, error) {
 	a.tx.Lock()

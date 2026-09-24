@@ -117,3 +117,49 @@ func TestDiagramasUMLViaHTTP(t *testing.T) {
 		t.Errorf("remoção: status %d", res.StatusCode)
 	}
 }
+
+// Reorganizar todos: o projeto de exemplo muda na primeira vez e, como o
+// layout é estável, nada muda na segunda.
+func TestReorganizarDiagramasViaHTTP(t *testing.T) {
+	ts, st := newTestServer(t)
+	defer ts.Close()
+
+	res, body := do(t, ts, "POST", "/api/autolayout", map[string]any{})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("autolayout: status %d — %s", res.StatusCode, body)
+	}
+	var first struct {
+		Architecture bool     `json:"architecture"`
+		Diagrams     []string `json:"diagrams"`
+	}
+	if err := json.Unmarshal(body, &first); err != nil {
+		t.Fatal(err)
+	}
+	if !first.Architecture || len(first.Diagrams) == 0 {
+		t.Errorf("o exemplo deveria ser reorganizado: %+v", first)
+	}
+	for _, id := range first.Diagrams {
+		d, err := st.LoadUMLDiagram(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := d.Validate(); err != nil {
+			t.Errorf("%s inválido depois de reorganizar: %v", id, err)
+		}
+	}
+
+	res, body = do(t, ts, "POST", "/api/autolayout", map[string]any{})
+	if res.StatusCode != http.StatusOK || !strings.Contains(string(body), `"architecture":false`) ||
+		!strings.Contains(string(body), `"diagrams":[]`) {
+		t.Errorf("segunda reorganização deveria não mudar nada: %d %s", res.StatusCode, body)
+	}
+
+	res, _ = do(t, ts, "POST", "/api/uml/"+first.Diagrams[0]+"/autolayout", map[string]any{})
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("autolayout de um diagrama: status %d", res.StatusCode)
+	}
+	res, _ = do(t, ts, "POST", "/api/uml/nao-existe/autolayout", map[string]any{})
+	if res.StatusCode != http.StatusNotFound {
+		t.Errorf("diagrama inexistente: status %d, want 404", res.StatusCode)
+	}
+}

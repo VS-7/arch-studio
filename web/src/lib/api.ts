@@ -109,6 +109,8 @@ export const api = {
     request<{ edge: ArchEdge; endpoints: Endpoint[] }>('POST', '/api/diagram/edges', input),
   deleteEdge: (id: string) => request<{ deleted: boolean }>('DELETE', `/api/diagram/edges/${encodeURIComponent(id)}`),
   autoLayout: () => request<Diagram>('POST', '/api/diagram/autolayout', {}),
+  /** Reorganiza a arquitetura e todos os diagramas UML; devolve o que mudou. */
+  autoLayoutAll: () => request<{ architecture: boolean; diagrams: string[] }>('POST', '/api/autolayout', {}),
   importMermaid: (source: string) => request<Diagram>('POST', '/api/diagram/import-mermaid', { source }),
 
   // Diagramas UML
@@ -120,6 +122,7 @@ export const api = {
   renameUML: (id: string, input: { name?: string; description?: string }) =>
     request<UMLDiagram>('PATCH', `/api/uml/${encodeURIComponent(id)}`, input),
   deleteUML: (id: string) => request<{ deleted: boolean }>('DELETE', `/api/uml/${encodeURIComponent(id)}`),
+  autoLayoutUML: (id: string) => request<UMLDiagram>('POST', `/api/uml/${encodeURIComponent(id)}/autolayout`, {}),
   umlMermaid: (id: string) => request<{ mermaid: string }>('GET', `/api/uml/${encodeURIComponent(id)}/mermaid`),
   generateUseCaseDiagram: (name?: string) =>
     request<UMLDiagram>('POST', '/api/uml/generate/use-cases', name ? { name } : {}),

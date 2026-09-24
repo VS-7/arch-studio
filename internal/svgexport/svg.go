@@ -242,11 +242,19 @@ func Render(d *model.Diagram, opts Options) string {
 		x2, y2 := tb.anchor(sb.cx(), sb.cy())
 		x1, y1, x2, y2 = x1+offX, y1+offY, x2+offX, y2+offY
 
-		// Curva suave horizontal quando os nós estão em colunas diferentes.
-		dx := math.Abs(x2 - x1)
-		c := math.Max(40, dx*0.45)
-		path := fmt.Sprintf("M %.1f %.1f C %.1f %.1f, %.1f %.1f, %.1f %.1f",
-			x1, y1, x1+c, y1, x2-c, y2, x2, y2)
+		// Curva suave no sentido em que a aresta sai do nó: horizontal quando
+		// sai pela lateral, vertical quando sai pelo topo ou pela base (fluxo
+		// de cima para baixo), sempre apontando para o alvo.
+		var path string
+		if math.Abs(tb.cy()-sb.cy())*sb.w > math.Abs(tb.cx()-sb.cx())*sb.h {
+			c := math.Copysign(math.Max(40, math.Abs(y2-y1)*0.45), y2-y1)
+			path = fmt.Sprintf("M %.1f %.1f C %.1f %.1f, %.1f %.1f, %.1f %.1f",
+				x1, y1, x1, y1+c, x2, y2-c, x2, y2)
+		} else {
+			c := math.Copysign(math.Max(40, math.Abs(x2-x1)*0.45), x2-x1)
+			path = fmt.Sprintf("M %.1f %.1f C %.1f %.1f, %.1f %.1f, %.1f %.1f",
+				x1, y1, x1+c, y1, x2-c, y2, x2, y2)
+		}
 		dash := ""
 		if strings.EqualFold(e.Data.Protocol, "webhook") || e.Animated {
 			dash = ` stroke-dasharray="7 5"`

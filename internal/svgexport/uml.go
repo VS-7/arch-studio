@@ -167,6 +167,13 @@ func elementSize(e model.UMLElement) (float64, float64) {
 	return w, h
 }
 
+// Metrics expõe a medição usada no desenho (layout.UMLMetrics), para que a
+// reorganização reserve o espaço real de cada elemento e rótulo.
+type Metrics struct{}
+
+func (Metrics) Size(e model.UMLElement) (float64, float64) { return elementSize(e) }
+func (Metrics) TextWidth(s string, size float64) float64   { return textWidth(s, size) }
+
 // shapeKind define como a borda é calculada para ancorar relações.
 type shapeKind int
 

@@ -10,7 +10,7 @@ import {
   addEdge, useEdgesState, useNodesState,
   type Connection, type Edge, type NodeChange, type OnConnect, type ReactFlowInstance,
 } from '@xyflow/react'
-import { ClipboardPaste, Maximize, Plus, SquareDashedMousePointer, Trash2 } from 'lucide-react'
+import { ClipboardPaste, Maximize, Plus, SquareDashedMousePointer, Trash2, Wand2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../../lib/api'
 import { addConnectedNode, copyArch, defaultProtocol, pasteArch } from '../../lib/archOps'
@@ -31,6 +31,10 @@ export interface CanvasHandle extends CanvasCommands {
   focusNode: (id: string) => void
 }
 
+/** Caixa de um componente no canvas (ArchNodeView) — a mesma do layout no Go. */
+const NODE_WIDTH = 220
+const NODE_HEIGHT = 110
+
 /** Tipos oferecidos na barra rápida "criar conectado". */
 export const QUICK_TYPES: NodeType[] = ['compute', 'database', 'cache', 'queue', 'gateway', 'external_service']
 
@@ -46,6 +50,8 @@ interface Props {
   onSelect: (id: string | null, kind: 'node' | 'edge') => void
   /** Recebe os comandos do canvas; null ao desmontar. */
   onReady?: (handle: CanvasHandle | null) => void
+  /** Reorganiza o diagrama inteiro (menu de contexto do canvas). */
+  onAutoLayout?: () => void
   interactive?: boolean
   onDirty?: () => void
   /** Ferramenta da Toolbox: com um tipo de componente ativo, clicar no canvas o cria. */
@@ -90,6 +96,23 @@ function toFlowNodes(
   })) as ArchFlowNode[]
 }
 
+/**
+ * Alças de uma conexão pela geometria: quando o alvo está abaixo da origem (o
+ * fluxo de cima para baixo que a reorganização escolhe para caber na página),
+ * a aresta sai pela base e entra pelo topo; senão, da direita para a esquerda.
+ * Mesma regra do SVG exportado (internal/svgexport).
+ */
+function edgeHandles(diagram: Diagram, source: string, target: string): Pick<Edge, 'sourceHandle' | 'targetHandle'> {
+  const s = diagram.nodes.find((n) => n.id === source)
+  const t = diagram.nodes.find((n) => n.id === target)
+  if (!s || !t || s.type === 'group' || t.type === 'group') return {}
+  const w = s.width || NODE_WIDTH
+  const h = s.height || NODE_HEIGHT
+  const dx = (t.position.x + (t.width || NODE_WIDTH) / 2) - (s.position.x + w / 2)
+  const dy = (t.position.y + (t.height || NODE_HEIGHT) / 2) - (s.position.y + h / 2)
+  return dy > 0 && dy * w > Math.abs(dx) * h ? { sourceHandle: 'b', targetHandle: 't' } : {}
+}
+
 function toFlowEdges(diagram: Diagram, executive: boolean, spotlight?: Set<string> | null, selected?: Set<string>): Edge[] {
   const visibleNodes = new Set(
     diagram.nodes.filter((n) => !executive || n.data.executive !== false).map((n) => n.id),
@@ -106,6 +129,7 @@ function toFlowEdges(diagram: Diagram, executive: boolean, spotlight?: Set<strin
         id: e.id,
         source: e.source,
         target: e.target,
+        ...edgeHandles(diagram, e.source, e.target),
         type: e.type || 'smoothstep',
         animated: e.animated,
         selected: selected?.has(e.id) ?? false,
@@ -119,14 +143,14 @@ function toFlowEdges(diagram: Diagram, executive: boolean, spotlight?: Set<strin
 }
 
 export function ArchCanvas({
-  diagram, executive, highlight, spotlight, selectedId, onSelect, onReady, interactive = true, onDirty,
+  diagram, executive, highlight, spotlight, selectedId, onSelect, onReady, onAutoLayout, interactive = true, onDirty,
   tool, onToolDone, onZoom, onSelectionChange,
 }: Props) {
   const toast = useToast()
   const run = useRunCommand()
   // Callbacks do Shell mudam a cada render; ref mantém os comandos estáveis.
-  const cb = useRef({ onSelect, onSelectionChange, onDirty, onToolDone, onReady })
-  cb.current = { onSelect, onSelectionChange, onDirty, onToolDone, onReady }
+  const cb = useRef({ onSelect, onSelectionChange, onDirty, onToolDone, onReady, onAutoLayout })
+  cb.current = { onSelect, onSelectionChange, onDirty, onToolDone, onReady, onAutoLayout }
   const [nodes, setNodes, onNodesChange] = useNodesState<ArchFlowNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [instance, setInstance] = useState<ReactFlowInstance<ArchFlowNode, Edge> | null>(null)
@@ -316,6 +340,10 @@ export function ArchCanvas({
         { type: 'item', label: 'Colar', icon: <ClipboardPaste />, shortcut: 'Ctrl+V', disabled: !clipboard.get(), onSelect: () => run(commands.paste) },
         { type: 'item', label: 'Selecionar tudo', icon: <SquareDashedMousePointer />, shortcut: 'Ctrl+A', onSelect: commands.selectAll },
         { type: 'item', label: 'Ajustar à tela', icon: <Maximize />, shortcut: 'Shift+1', onSelect: commands.fitAll },
+        ...(cb.current.onAutoLayout ? [
+          { type: 'separator' as const },
+          { type: 'item' as const, label: 'Reorganizar diagrama', icon: <Wand2 />, shortcut: 'Ctrl+Shift+L', onSelect: () => cb.current.onAutoLayout?.() },
+        ] : []),
       ],
     })
   }, [commands, createAtFlow, instance, interactive, run, typeItems])

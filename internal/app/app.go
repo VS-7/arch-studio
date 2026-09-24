@@ -8,8 +8,8 @@
 //
 // Os arquivos se dividem por área: diagram (arquitetura macro), uml, docs
 // (requisitos, casos de uso, ADRs), endpoints, pricing, tasks (AI-PRD), export
-// (proposta e OpenAPI), reqdoc (Documento de Requisitos), validate e project
-// (leituras, arquivos brutos e mudanças externas). Os geradores em si são
+// (proposta e OpenAPI), reqdoc (Documento de Requisitos), layout (reorganizar
+// diagramas), validate e project (leituras, arquivos brutos e mudanças externas). Os geradores em si são
 // funções puras nos pacotes prd, proposal, openapi, reqdoc, lint e svgexport.
 package app
 

@@ -8,7 +8,7 @@
 
 import {
   AlertTriangle, CheckCircle2, ChevronDown, FileDown, FileText, FileType2, ListTree, Loader2, PanelRight, Printer,
-  RefreshCw, Save, Settings2, ZoomIn, ZoomOut,
+  RefreshCw, Save, Settings2, Wand2, ZoomIn, ZoomOut,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -60,7 +60,37 @@ function pendencies(snapshot: Snapshot): string[] {
   return out
 }
 
-export function DocumentPanel({ snapshot }: { snapshot: Snapshot }) {
+/** Hash curto (FNV-1a) de um texto. */
+function hash(text: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193)
+  return (h >>> 0).toString(36)
+}
+
+/**
+ * Versiona a URL de cada figura pelo conteúdo do diagrama. O navegador
+ * reaproveita imagens com a mesma URL dentro da página, e a prévia mostraria
+ * o desenho antigo depois de editar ou reorganizar um diagrama.
+ */
+function withFigureVersions(doc: ReqDocument, snapshot: Snapshot): ReqDocument {
+  const versions = new Map<string, string>([
+    ['macro', hash(JSON.stringify([snapshot.diagram.nodes, snapshot.diagram.edges]))],
+  ])
+  for (const d of snapshot.uml_diagrams ?? []) versions.set(d.id, hash(JSON.stringify([d.elements, d.relations, d.name])))
+  return {
+    ...doc,
+    blocks: doc.blocks.map((b) => {
+      const v = b.type === 'image' ? versions.get(b.diagram) : undefined
+      return b.type === 'image' && v ? { ...b, src: `${b.src}${b.src.includes('?') ? '&' : '?'}v=${v}` } : b
+    }),
+  }
+}
+
+export function DocumentPanel({ snapshot, onReorganize }: {
+  snapshot: Snapshot
+  /** Reorganiza todos os diagramas para caber na página. */
+  onReorganize?: () => void
+}) {
   const toast = useToast()
   const [doc, setDoc] = useState<ReqDocument | null>(null)
   const [loading, setLoading] = useState(true)
@@ -71,10 +101,12 @@ export function DocumentPanel({ snapshot }: { snapshot: Snapshot }) {
   const [zoom, setZoom] = useStored<'fit' | number>('archcode-doc-zoom', 'fit')
   const [fitZoom, setFitZoom] = useState(1)
   const desk = useRef<HTMLDivElement>(null)
+  const snapshotRef = useRef(snapshot)
+  snapshotRef.current = snapshot
 
   const load = useCallback(async () => {
     try {
-      setDoc(await api.reqDocument())
+      setDoc(withFigureVersions(await api.reqDocument(), snapshotRef.current))
       setError(null)
     } catch (err) {
       setError(errorMessage(err))
@@ -177,6 +209,12 @@ export function DocumentPanel({ snapshot }: { snapshot: Snapshot }) {
             <IconAction label="Aproximar" onClick={() => stepZoom(1)} className="h-full px-1.5"><ZoomIn size={14} /></IconAction>
           </div>
           <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => void load()}>Atualizar</Button>
+          {onReorganize && counts.fig > 0 && (
+            <Button size="sm" variant="ghost" icon={Wand2} onClick={onReorganize}
+              title="Redispõe todos os diagramas com espaçamento, para caberem na página (o aviso oferece Desfazer)">
+              Reorganizar diagramas
+            </Button>
+          )}
           <Button size="sm" variant="secondary" icon={Settings2} onClick={() => setMetaOpen(true)}>Dados do documento</Button>
           <Button size="sm" variant="secondary" icon={Save} loading={busy === 'save'} onClick={() => void saveToProject()}>Salvar no projeto</Button>
           <DropdownMenu>

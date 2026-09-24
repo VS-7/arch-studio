@@ -54,6 +54,8 @@ const KEYMAP: Binding[] = [
     match: (e) => e.key === 'Delete' || e.key === 'Backspace', run: (h) => h.actions.deleteSelection },
   { keys: 'F2', description: 'Renomear o elemento selecionado (também com duplo clique)',
     match: (e) => e.key === 'F2', run: (h) => h.rename },
+  { keys: 'Ctrl + Shift + L', description: 'Reorganizar o diagrama para caber na página do documento',
+    match: (e, k, mod) => mod && e.shiftKey && k === 'l', run: (h) => h.actions.autoLayout },
   { keys: 'Shift + 1', description: 'Ajustar o diagrama à tela',
     match: (e) => e.shiftKey && e.code === 'Digit1', run: (h) => h.actions.fit, passThrough: true },
   { keys: '+', description: 'Aproximar',

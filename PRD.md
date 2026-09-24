@@ -472,6 +472,7 @@ sequenceDiagram
 - `add_uml_relation`: conecta elementos (origem/destino por id ou nome) com o tipo de relação adequado ao diagrama.
 - `remove_uml_item`: remove um elemento (com suas relações) ou uma relação.
 - `generate_use_case_diagram`: gera/sincroniza o diagrama de casos de uso a partir das fichas.
+- `auto_layout_diagram`: reorganiza um diagrama UML, a arquitetura (`macro`) ou todos (`all`) para caber numa página A4 do Documento de Requisitos. Única operação que move elementos já posicionados — só a pedido do usuário ou logo após criar um diagrama do zero.
 
 #### 8. `get_implementation_tasks`
 - **Descrição:** Retorna a fila ordenada de tarefas técnicas pendentes com base no `docs/ai-prd.md` para orientar o agente de IA na codificação sequencial.

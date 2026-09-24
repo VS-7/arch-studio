@@ -4,11 +4,15 @@
 // por operações de escrita de agentes de IA. Nós novos recebem uma posição livre
 // calculada por proximidade a um nó âncora (tipicamente o nó ao qual serão
 // conectados), ou por coluna de tier quando não há âncora.
+//
+// A exceção é explícita: "Reorganizar" (AutoLayout e UML) redispõe o diagrama
+// inteiro para caber na página do Documento de Requisitos — a pedido do
+// usuário, na importação de Mermaid ou ao criar um diagrama gerado.
 package layout
 
 import (
+	"fmt"
 	"math"
-	"sort"
 
 	"github.com/archcode/studio/internal/model"
 )
@@ -142,89 +146,169 @@ func FindFreePosition(d *model.Diagram, anchorID, tier string) model.Position {
 	return model.Position{X: x, Y: maxY + StepY}
 }
 
-// AutoLayout recalcula todas as posições por camadas topológicas.
+// Recuo interno dos grupos: o mesmo com que o import de Mermaid materializa
+// um subgraph em volta dos filhos (mermaid.Import), para os dois concordarem.
+var groupPad = [4]float64{60, 40, 40, 40}
+
+// Margem do SVG de arquitetura (svgexport.Options.Padding padrão).
+const archSVGMargin = 64.0
+
+// AutoLayout recalcula todas as posições por camadas topológicas, escolhendo
+// entre fluxo da esquerda para a direita (preferido) e de cima para baixo o que
+// deixa o diagrama maior numa página A4 do documento. Grupos viram contêineres:
+// os membros (parentId, ou nós cujo centro está dentro do grupo) são dispostos
+// juntos e o grupo é redimensionado para envolvê-los.
+//
 // Usado apenas em importação de Mermaid ou quando o usuário pede explicitamente
 // "reorganizar", nunca em escritas incrementais de agentes.
 func AutoLayout(d *model.Diagram) {
 	if len(d.Nodes) == 0 {
 		return
 	}
-	indexByID := map[string]int{}
+	// Ordem de entrada: a de leitura da disposição atual; o baricentro parte dela.
+	rects := make([][4]float64, len(d.Nodes))
 	for i, n := range d.Nodes {
-		indexByID[n.ID] = i
+		w, h := groupSize(n)
+		rects[i] = [4]float64{n.Position.X, n.Position.Y, w, h}
 	}
+	idx := readingOrder(rects)
 
-	indegree := make([]int, len(d.Nodes))
-	adj := make([][]int, len(d.Nodes))
-	for _, e := range d.Edges {
-		si, sok := indexByID[e.Source]
-		ti, tok := indexByID[e.Target]
-		if !sok || !tok || si == ti {
+	boxes := []cbox{}
+	item := map[string]int{} // id do nó (ou do grupo virtual) → índice em boxes
+	nodeOf := []int{}        // índice em boxes → índice em d.Nodes (-1 = grupo virtual)
+	for _, i := range idx {
+		n := d.Nodes[i]
+		w, h := groupSize(n)
+		item[n.ID] = len(boxes)
+		boxes = append(boxes, cbox{w: w, h: h, parent: -1, pad: groupPad, minW: 180})
+		nodeOf = append(nodeOf, i)
+	}
+	// parentId sem nó de grupo (subgraph do Mermaid antes de materializado)
+	// também agrupa: um contêiner virtual mantém os membros juntos.
+	for _, i := range idx {
+		p := d.Nodes[i].ParentID
+		if p == "" {
 			continue
 		}
-		adj[si] = append(adj[si], ti)
-		indegree[ti]++
+		if _, ok := item[p]; !ok {
+			item[p] = len(boxes)
+			boxes = append(boxes, cbox{parent: -1, pad: groupPad})
+			nodeOf = append(nodeOf, -1)
+		}
+	}
+	for bi, ni := range nodeOf {
+		if ni < 0 {
+			continue
+		}
+		boxes[bi].parent = archParent(d, ni, item)
 	}
 
-	// Longest-path layering: camada(v) = 1 + max(camada(predecessores)).
-	depth := make([]int, len(d.Nodes))
-	queue := []int{}
-	for i, deg := range indegree {
-		if deg == 0 {
-			queue = append(queue, i)
-		}
-	}
-	if len(queue) == 0 { // grafo totalmente cíclico: começa pelo primeiro nó
-		queue = append(queue, 0)
-		indegree[0] = 0
-	}
-	remaining := append([]int(nil), indegree...)
-	processed := 0
-	for len(queue) > 0 {
-		cur := queue[0]
-		queue = queue[1:]
-		processed++
-		for _, next := range adj[cur] {
-			if depth[cur]+1 > depth[next] {
-				depth[next] = depth[cur] + 1
-			}
-			remaining[next]--
-			if remaining[next] == 0 {
-				queue = append(queue, next)
-			}
-		}
-	}
-	if processed < len(d.Nodes) {
-		// Ciclos remanescentes: usa o tier como profundidade de fallback.
-		for i, n := range d.Nodes {
-			if remaining[i] > 0 {
-				depth[i] = TierColumn[ResolveTier(n)]
-			}
+	edges := []lgEdge{}
+	for _, e := range d.Edges {
+		a, aok := item[e.Source]
+		b, bok := item[e.Target]
+		if aok && bok && a != b {
+			edges = append(edges, lgEdge{a, b, edgeLabelWidth(e)})
 		}
 	}
 
-	byDepth := map[int][]int{}
-	for i := range d.Nodes {
-		byDepth[depth[i]] = append(byDepth[depth[i]], i)
-	}
-	depths := make([]int, 0, len(byDepth))
-	for k := range byDepth {
-		depths = append(depths, k)
-	}
-	sort.Ints(depths)
-
-	for _, lvl := range depths {
-		idxs := byDepth[lvl]
-		sort.SliceStable(idxs, func(a, b int) bool {
-			return d.Nodes[idxs[a]].Data.Label < d.Nodes[idxs[b]].Data.Label
-		})
-		for row, idx := range idxs {
-			d.Nodes[idx].Position = model.Position{
-				X: 120 + float64(lvl)*StepX,
-				Y: 120 + float64(row)*StepY,
+	spec := fitSpec{
+		orients: []Orientation{LeftRight, TopDown},
+		options: func(o Orientation) lgOptions {
+			if o == LeftRight {
+				return lgOptions{layerGap: GapX, nodeGap: GapY, wrapGap: GapY}
 			}
+			return lgOptions{layerGap: 90, nodeGap: 60, wrapGap: 50}
+		},
+		margin: archSVGMargin,
+	}
+	pos, size := compound(boxes, edges, spec)
+
+	for bi, ni := range nodeOf {
+		if ni < 0 {
+			continue
+		}
+		n := &d.Nodes[ni]
+		n.Position = model.Position{X: 120 + pos[bi].X, Y: 120 + pos[bi].Y}
+		if n.Type == "group" && hasChildren(boxes, bi) {
+			n.Width, n.Height = size[bi][0], size[bi][1]
 		}
 	}
+}
+
+// edgeLabelWidth estima a largura da pílula de rótulo que o SVG desenha no
+// meio da conexão (rótulo, ou protocolo com a porta).
+func edgeLabelWidth(e model.Edge) float64 {
+	label := e.Label
+	if label == "" {
+		label = e.Data.Protocol
+		if e.Data.Port > 0 {
+			label = fmt.Sprintf("%s :%d", label, e.Data.Port)
+		}
+	}
+	if label == "" {
+		return 0
+	}
+	return float64(len([]rune(label)))*6.2 + 14
+}
+
+// groupSize devolve o tamanho de um nó como o canvas o desenha.
+func groupSize(n model.Node) (float64, float64) {
+	w, h := n.Width, n.Height
+	if n.Type == "group" {
+		if w <= 0 {
+			w = 520
+		}
+		if h <= 0 {
+			h = 360
+		}
+		return w, h
+	}
+	if w <= 0 {
+		w = NodeWidth
+	}
+	if h <= 0 {
+		h = NodeHeight
+	}
+	return w, h
+}
+
+// archParent devolve o contêiner de um nó: o parentId, se existir, ou o menor
+// grupo que contém o centro do nó e é maior que ele (grupos só contêm itens
+// menores, o que impede contenção cíclica).
+func archParent(d *model.Diagram, i int, item map[string]int) int {
+	n := d.Nodes[i]
+	if n.ParentID != "" && n.ParentID != n.ID {
+		if p, ok := item[n.ParentID]; ok {
+			return p
+		}
+	}
+	w, h := groupSize(n)
+	cx, cy := n.Position.X+w/2, n.Position.Y+h/2
+	best, bestArea := -1, math.Inf(1)
+	for j, g := range d.Nodes {
+		if j == i || g.Type != "group" {
+			continue
+		}
+		gw, gh := groupSize(g)
+		area := gw * gh
+		if area <= w*h || area >= bestArea {
+			continue
+		}
+		if cx >= g.Position.X && cx <= g.Position.X+gw && cy >= g.Position.Y && cy <= g.Position.Y+gh {
+			best, bestArea = item[g.ID], area
+		}
+	}
+	return best
+}
+
+func hasChildren(boxes []cbox, i int) bool {
+	for _, b := range boxes {
+		if b.parent == i {
+			return true
+		}
+	}
+	return false
 }
 
 // Bounds devolve o retângulo que envolve todos os nós, útil para exportação.

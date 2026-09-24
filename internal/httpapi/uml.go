@@ -78,6 +78,15 @@ func (s *Server) getUMLMermaid(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"mermaid": src})
 }
 
+func (s *Server) autoLayoutUML(w http.ResponseWriter, r *http.Request) {
+	d, err := s.app.AutoLayoutUML(r.PathValue("id"), hub.SourceUI)
+	if err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
+}
+
 func (s *Server) putUML(w http.ResponseWriter, r *http.Request) {
 	var d model.UMLDiagram
 	if err := decode(r, &d); err != nil {
