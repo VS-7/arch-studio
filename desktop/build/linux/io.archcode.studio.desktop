@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=ArchCode Studio
+GenericName=Modelagem de arquitetura de software
+Comment=Arquitetura de software como código, local-first e nativa para IAs
+Exec=archcode-desktop %F
+Icon=archcode-studio
+Terminal=false
+Categories=Development;IDE;
+Keywords=arquitetura;uml;diagrama;requisitos;mcp;
+StartupWMClass=io.archcode.studio

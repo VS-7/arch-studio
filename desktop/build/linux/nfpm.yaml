@@ -1,0 +1,47 @@
+# Pacotes Linux do app desktop (.deb e .rpm), gerados com nfpm a partir da
+# raiz do repositório por `make desktop-package`. VERSION e GOARCH vêm do make.
+name: archcode-studio
+arch: ${GOARCH}
+platform: linux
+version: ${VERSION}
+section: devel
+priority: optional
+maintainer: ArchCode Studio (https://github.com/VS-7/arch-studio)
+description: |
+  Arquitetura de software como código, local-first e nativa para IAs.
+  Diagramas de arquitetura e UML, requisitos, casos de uso, AI-PRD e
+  servidor MCP para agentes de IA, num app desktop.
+vendor: ArchCode Studio
+homepage: https://github.com/VS-7/arch-studio
+license: MIT
+
+contents:
+  - src: dist/archcode-desktop
+    dst: /usr/bin/archcode-desktop
+    file_info:
+      mode: 0755
+  - src: desktop/appicon.png
+    dst: /usr/share/icons/hicolor/512x512/apps/archcode-studio.png
+    file_info:
+      mode: 0644
+  # O nome do .desktop é o application id da janela (main.go): é assim que
+  # GNOME/KDE associam a janela aberta ao ícone e ao nome no menu e no dock.
+  - src: desktop/build/linux/io.archcode.studio.desktop
+    dst: /usr/share/applications/io.archcode.studio.desktop
+    file_info:
+      mode: 0644
+
+# Só o que o app precisa para rodar: GTK 4 e WebKitGTK 6.0 (Ubuntu 24.04+,
+# Debian 13+). O apt/dnf instala automaticamente.
+depends:
+  - libgtk-4-1
+  - libwebkitgtk-6.0-4
+
+overrides:
+  rpm:
+    depends:
+      - gtk4
+      - webkitgtk6.0
+
+scripts:
+  postinstall: desktop/build/linux/postinstall.sh

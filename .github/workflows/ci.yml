@@ -3,7 +3,11 @@ name: CI
 on:
   push:
     branches: [main]
+    # Tags v* publicam uma release com o CLI e o app desktop (job release).
+    tags: ['v*']
   pull_request:
+  # Execução manual: gera os pacotes do app desktop como artefato, sem publicar.
+  workflow_dispatch:
 
 jobs:
   test:
@@ -54,7 +58,9 @@ jobs:
           test -s /tmp/smoke/arch.svg
 
   desktop:
-    runs-on: ubuntu-latest
+    # Versão fixa do Ubuntu: o binário exige a glibc/GTK do sistema em que foi
+    # compilado, e a 24.04 é a base mais antiga com GTK 4.14 + WebKitGTK 6.0.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -75,23 +81,38 @@ jobs:
       - name: Dependências nativas (GTK4 + WebKitGTK 6.0)
         run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
 
-      - name: Compilar o frontend
-        run: npm --prefix web ci && npm --prefix web run build
+      - name: Versão
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0-dev.${GITHUB_RUN_NUMBER}"; fi
+          echo "VERSION=$v" >> "$GITHUB_ENV"
 
-      - name: Análise, testes e build do app desktop (Linux)
+      - name: Dependências do frontend
+        run: npm --prefix web ci
+
+      - name: Análise e testes do app desktop
         working-directory: desktop
         run: |
           go vet ./...
           go test ./...
-          go build -tags production -o archcode-desktop .
 
-      - name: Build cruzado do app desktop (Windows)
-        working-directory: desktop
-        run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -tags production -ldflags "-H windowsgui" -o archcode-desktop.exe .
+      - name: Pacotes Linux (.deb, .rpm, .tar.gz) e Windows (.zip)
+        run: |
+          make desktop-package desktop-windows VERSION="$VERSION"
+          cd dist && zip -q "archcode-desktop-$VERSION-windows-amd64.zip" archcode-desktop-windows-amd64.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archcode-desktop
+          path: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: test
+    needs: [test, desktop]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -105,7 +126,26 @@ jobs:
       - run: npm --prefix web ci
       - run: make release VERSION=${GITHUB_REF_NAME#v}
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: archcode-desktop
+          path: dist/
+
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS
+
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           generate_release_notes: true
+          body: |
+            ## Instalação do app desktop
+
+            **Ubuntu 24.04+ / Debian 13+** — instala as dependências (GTK 4 e WebKitGTK 6.0) automaticamente:
+            ```bash
+            cd ~/Downloads && sudo apt install ./archcode-studio_*_amd64.deb
+            ```
+            **Fedora 40+**: `sudo dnf install ./archcode-studio-*.x86_64.rpm`
+            **Windows 10/11**: extraia o `.zip` e rode `archcode-desktop-windows-amd64.exe`.
+
+            O CLI (`archcode-studio-<sistema>-<arquitetura>`) continua disponível para uso no terminal e em servidores.

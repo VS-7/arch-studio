@@ -42,6 +42,8 @@ const (
 	eventName = "archcode:event"
 	// windowName identifica a janela principal.
 	windowName = "main"
+	// appID identifica o aplicativo no sistema (instância única, .desktop no Linux).
+	appID = "io.archcode.studio"
 )
 
 func main() {
@@ -96,12 +98,14 @@ func run(initialDir string) error {
 		Name:        "ArchCode Studio",
 		Description: "Arquitetura de software como código, local-first e nativa para IAs",
 		Icon:        appIcon,
-		Linux:       application.LinuxOptions{ProgramName: "archcode-studio"},
-		Services:    []application.Service{application.NewService(desktop)},
-		Assets:      application.AssetOptions{Handler: assets},
-		Mac:         application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
+		// O application id identifica a janela no Linux (Wayland/X11) e dá nome ao
+		// .desktop instalado pelos pacotes (build/linux/io.archcode.studio.desktop).
+		Linux:    application.LinuxOptions{ApplicationID: appID},
+		Services: []application.Service{application.NewService(desktop)},
+		Assets:   application.AssetOptions{Handler: assets},
+		Mac:      application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
 		SingleInstance: &application.SingleInstanceOptions{
-			UniqueID: "io.archcode.studio",
+			UniqueID: appID,
 			// Abrir o app de novo (ou abrir uma pasta por ele) foca a janela existente.
 			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
 				if dir := projectArg(data.Args, data.WorkingDir); dir != "" {

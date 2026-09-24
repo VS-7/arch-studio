@@ -41,6 +41,21 @@ editáveis por humanos no navegador, por desenvolvedores no VS Code e por agente
 
 ## Instalação
 
+**App desktop** — baixe a última versão em
+[Releases](https://github.com/VS-7/arch-studio/releases/latest), sem clonar o repositório:
+
+| Sistema | Arquivo | Como instalar |
+| :--- | :--- | :--- |
+| Ubuntu 24.04+ / Debian 13+ | `archcode-studio_<versão>_amd64.deb` | `sudo apt install ./archcode-studio_*_amd64.deb` (instala GTK 4 e WebKitGTK 6.0 junto) |
+| Fedora 40+ | `archcode-studio-<versão>-1.x86_64.rpm` | `sudo dnf install ./archcode-studio-*.rpm` |
+| Outras distros | `archcode-desktop-<versão>-linux-amd64.tar.gz` | extraia e rode `./archcode-desktop` (requer GTK 4.14+ e WebKitGTK 6.0) |
+| Windows 10/11 | `archcode-desktop-<versão>-windows-amd64.zip` | extraia e rode o `.exe` |
+
+Depois de instalado, o ArchCode Studio aparece no menu de aplicativos; pelo terminal,
+`archcode-desktop <pasta-do-projeto>`.
+
+**CLI e servidor** — os binários `archcode-studio-<sistema>-<arquitetura>` da mesma release, ou:
+
 ```bash
 # A partir do código-fonte (requer Go 1.25+ e Node 20+)
 git clone https://github.com/archcode/studio archcode-studio
@@ -85,8 +100,10 @@ make desktop-dev        # modo desenvolvimento, com DevTools
 Dependências nativas no Linux: `libgtk-4-dev libwebkitgtk-6.0-dev` (padrão do Wails v3). Em distros
 sem GTK 4.14, use GTK 3: `make desktop DESKTOP_TAGS="production gtk3"` com `libgtk-3-dev
 libwebkit2gtk-4.1-dev`. No macOS basta o Xcode Command Line Tools; no Windows, o WebView2 (já presente
-no Windows 10/11). Instaladores (`.deb`, AppImage, NSIS, `.app`) podem ser gerados com o CLI
-`wails3` a partir deste binário.
+no Windows 10/11). `make desktop-package` gera os pacotes Linux (`.deb`, `.rpm` e
+`.tar.gz`) em `dist/`. A CI publica todos eles na release a cada tag `v*`
+(`git tag v1.2.0 && git push origin v1.2.0`), e qualquer execução da CI deixa os pacotes disponíveis
+como artefato para teste.
 
 ## Deploy no Coolify
 

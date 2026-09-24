@@ -98,6 +98,20 @@ desktop-windows: web ## Compila o app desktop para Windows (sem CGO, funciona de
 		-ldflags "$(LDFLAGS) -H windowsgui" -o ../dist/$(DESKTOP_BIN)-windows-amd64.exe .
 	@echo "✓ dist/$(DESKTOP_BIN)-windows-amd64.exe pronto"
 
+NFPM   ?= $(GO) run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
+GOARCH ?= $(shell $(GO) env GOARCH)
+
+.PHONY: desktop-package
+desktop-package: desktop ## Empacota o app desktop Linux em dist/ (.deb, .rpm e .tar.gz)
+	@for fmt in deb rpm; do \
+		VERSION=$(VERSION) GOARCH=$(GOARCH) $(NFPM) pkg --config desktop/build/linux/nfpm.yaml --packager $$fmt --target dist/ || exit 1; \
+	done
+	@dir=archcode-desktop-$(VERSION)-linux-$(GOARCH); rm -rf dist/$$dir && mkdir -p dist/$$dir && \
+		cp dist/$(DESKTOP_BIN) desktop/build/linux/io.archcode.studio.desktop dist/$$dir/ && \
+		cp desktop/appicon.png dist/$$dir/archcode-studio.png && \
+		tar -czf dist/$$dir.tar.gz -C dist $$dir && rm -rf dist/$$dir
+	@ls -1 dist/ | sed 's/^/  ✓ dist\//'
+
 .PHONY: desktop-dev
 desktop-dev: web ## Roda o app desktop em modo de desenvolvimento (DevTools habilitado)
 	cd desktop && CGO_ENABLED=1 $(GO) run .
