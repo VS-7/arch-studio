@@ -108,9 +108,25 @@ func TestFluxoCompletoDoAgente(t *testing.T) {
 	}
 
 	// Fila de tarefas e marcação de progresso.
-	tasks, board, err := a.ImplementationTasks("pending")
+	list, err := a.ImplementationTasks(TaskQuery{Status: "pending"})
 	if err != nil {
 		t.Fatalf("ImplementationTasks: %v", err)
+	}
+	tasks, board := list.Tasks, list.Board
+
+	// Filtros: só as prontas; limite corta a lista e avisa.
+	onlyReady, err := a.ImplementationTasks(TaskQuery{Status: "pending", OnlyReady: true})
+	if err != nil || len(onlyReady.Tasks) == 0 {
+		t.Fatalf("filtro only_ready: %+v, %v", onlyReady, err)
+	}
+	for _, task := range onlyReady.Tasks {
+		if !task.Ready {
+			t.Errorf("only_ready devolveu %s, que ainda está bloqueada", task.ID)
+		}
+	}
+	limited, err := a.ImplementationTasks(TaskQuery{Status: "pending", Limit: 1})
+	if err != nil || len(limited.Tasks) != 1 || !limited.Truncated || len(tasks) < 2 {
+		t.Fatalf("limite: %d tarefa(s), truncated=%v (total %d), %v", len(limited.Tasks), limited.Truncated, len(tasks), err)
 	}
 	if len(tasks) == 0 {
 		t.Fatal("nenhuma tarefa pendente")

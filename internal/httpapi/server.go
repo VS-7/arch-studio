@@ -1,13 +1,12 @@
 // Package httpapi expõe o núcleo do ArchCode Studio via HTTP + WebSocket.
 //
-// Esta é a implementação do "Adapter Pattern" citado no RNF005: o frontend
-// conversa com um contrato de transporte estável. Ao migrar para o Wails v3,
-// basta trocar a implementação do adapter no lado TypeScript por bindings IPC —
-// nenhum handler de domínio precisa mudar, porque todos delegam para o pacote
-// `app`.
+// É um adaptador (RNF005): cada handler só traduz HTTP ⇄ chamadas do pacote
+// `app`. O mesmo handler atende o navegador (`archcode-studio serve`) e a janela
+// do app desktop, que o usa como servidor de assets do Wails.
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,24 +22,39 @@ import (
 	"github.com/archcode/studio/internal/model"
 	"github.com/archcode/studio/internal/prd"
 	"github.com/archcode/studio/internal/store"
-	"github.com/archcode/studio/internal/svgexport"
-	"github.com/archcode/studio/internal/webui"
 )
 
-type Server struct {
-	app     *app.App
-	hub     *hub.Hub
-	mux     *http.ServeMux
-	version string
+// Options configura o que o servidor anuncia e entrega além da API.
+type Options struct {
+	Version string
+	// Assets é o frontend compilado; nil responde "frontend não embutido".
+	Assets fs.FS
+	// Host identifica quem abre a interface ("web" ou "desktop"). Vai para o
+	// index.html como <meta name="archcode-host">, e o frontend escolhe o
+	// transporte de eventos a partir dele.
+	Host string
+	// MCPSSEURL é o endereço do MCP via SSE, anunciado em /api/health ("" se
+	// o transporte não estiver exposto).
+	MCPSSEURL string
+	// MCPCommand é o executável que agentes de IA rodam em stdio
+	// (`<comando> mcp --dir <projeto>`): o CLI ou o próprio app desktop.
+	MCPCommand string
 }
 
-func New(a *app.App, h *hub.Hub, version string) *Server {
-	s := &Server{app: a, hub: h, mux: http.NewServeMux(), version: version}
+type Server struct {
+	app  *app.App
+	hub  *hub.Hub
+	mux  *http.ServeMux
+	opts Options
+}
+
+func New(a *app.App, h *hub.Hub, opts Options) *Server {
+	s := &Server{app: a, hub: h, mux: http.NewServeMux(), opts: opts}
 	s.routes()
 	return s
 }
 
-func (s *Server) Handler() http.Handler { return logging(s.mux) }
+func (s *Server) Handler() http.Handler { return guardOrigin(logging(s.mux)) }
 
 // Mount permite pendurar handlers extras (ex.: o transporte SSE do MCP).
 func (s *Server) Mount(pattern string, h http.Handler) { s.mux.Handle(pattern, h) }
@@ -129,7 +143,7 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/export/uml/{file}", s.exportUMLSVG)
 
 	// Tempo real
-	m.HandleFunc("/ws", s.hub.ServeWS)
+	m.HandleFunc("/ws", s.serveWS)
 
 	// Frontend embutido
 	m.Handle("/", s.staticHandler())
@@ -155,7 +169,18 @@ type apiError struct {
 	Hint  string `json:"hint,omitempty"`
 }
 
+// fail responde o erro no formato {error, hint}. O tipo do erro decide o status
+// (404 para inexistente, 400 para inválido, 403 para caminho proibido); o
+// status informado vale para os demais.
 func fail(w http.ResponseWriter, status int, err error) {
+	switch {
+	case errors.Is(err, model.ErrNotFound):
+		status = http.StatusNotFound
+	case errors.Is(err, model.ErrInvalid):
+		status = http.StatusBadRequest
+	case errors.Is(err, app.ErrPathNotAllowed):
+		status = http.StatusForbidden
+	}
 	hint := ""
 	if errors.Is(err, store.ErrNotAProject) {
 		hint = "Rode `archcode-studio init` neste diretório para criar a estrutura .arch/."
@@ -187,11 +212,14 @@ func logging(next http.Handler) http.Handler {
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":      "ok",
-		"version":     s.version,
-		"root":        s.app.Store().Root(),
-		"is_project":  s.app.Store().IsProject(),
+		"version":     s.opts.Version,
+		"root":        s.app.Root(),
+		"is_project":  s.app.IsProject(),
 		"clients":     s.hub.Count(),
-		"frontend":    webui.Built(),
+		"frontend":    s.opts.Assets != nil,
+		"host":        s.host(),
+		"mcp_sse_url": s.opts.MCPSSEURL,
+		"mcp_command": s.opts.MCPCommand,
 		"server_time": time.Now().Format(time.RFC3339),
 	})
 }
@@ -210,7 +238,7 @@ func (s *Server) snapshot(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------------
 
 func (s *Server) getDiagram(w http.ResponseWriter, r *http.Request) {
-	d, err := s.app.Store().LoadDiagram()
+	d, err := s.app.Diagram()
 	if err != nil {
 		fail(w, http.StatusBadRequest, err)
 		return
@@ -315,13 +343,13 @@ func (s *Server) importMermaid(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getMermaid(w http.ResponseWriter, r *http.Request) {
-	data, err := s.app.Store().ReadFile(store.FileMacroMmd)
+	text, err := s.app.DiagramMermaid()
 	if err != nil {
-		fail(w, http.StatusNotFound, err)
+		fail(w, http.StatusBadRequest, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = w.Write(data)
+	_, _ = w.Write([]byte(text))
 }
 
 // ---------------------------------------------------------------------------
@@ -329,13 +357,12 @@ func (s *Server) getMermaid(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------------
 
 func (s *Server) getRequirements(w http.ResponseWriter, r *http.Request) {
-	doc, err := s.app.Store().LoadRequirements()
+	doc, err := s.app.Requirements()
 	if err != nil {
 		fail(w, http.StatusBadRequest, err)
 		return
 	}
-	raw, _ := s.app.Store().ReadFile(store.FileRequisit)
-	writeJSON(w, http.StatusOK, map[string]any{"doc": doc, "raw": string(raw)})
+	writeJSON(w, http.StatusOK, map[string]any{"doc": doc, "raw": s.app.RequirementsRaw()})
 }
 
 func (s *Server) upsertRequirement(w http.ResponseWriter, r *http.Request) {
@@ -380,7 +407,7 @@ func (s *Server) deleteRequirement(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listUseCases(w http.ResponseWriter, r *http.Request) {
-	list, err := s.app.Store().ListUseCases()
+	list, err := s.app.UseCases()
 	if err != nil {
 		fail(w, http.StatusBadRequest, err)
 		return
@@ -411,7 +438,7 @@ func (s *Server) deleteUseCase(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listADRs(w http.ResponseWriter, r *http.Request) {
-	list, err := s.app.Store().ListADRs()
+	list, err := s.app.ADRs()
 	if err != nil {
 		fail(w, http.StatusBadRequest, err)
 		return
@@ -446,7 +473,7 @@ func (s *Server) deleteADR(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------------
 
 func (s *Server) listEndpoints(w http.ResponseWriter, r *http.Request) {
-	spec, err := s.app.Store().LoadEndpoints()
+	spec, err := s.app.Endpoints()
 	if err != nil {
 		fail(w, http.StatusBadRequest, err)
 		return
@@ -490,7 +517,7 @@ func (s *Server) exportOpenAPI(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------------
 
 func (s *Server) getPricing(w http.ResponseWriter, r *http.Request) {
-	cfg, err := s.app.Store().LoadPricing()
+	cfg, err := s.app.PricingConfig()
 	if err != nil {
 		fail(w, http.StatusBadRequest, err)
 		return
@@ -545,17 +572,23 @@ func (s *Server) generateProposal(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------------
 
 func (s *Server) generatePRD(w http.ResponseWriter, r *http.Request) {
-	var opts prd.Options
+	var body struct {
+		TargetStack          string `json:"target_stack"`
+		IncludeTestScenarios *bool  `json:"include_test_scenarios"`
+		Granularity          string `json:"granularity"`
+	}
 	if r.ContentLength > 0 {
-		if err := decode(r, &opts); err != nil {
+		if err := decode(r, &body); err != nil {
 			fail(w, http.StatusBadRequest, err)
 			return
 		}
 	}
-	if opts.Granularity == "" {
-		opts.Granularity = "detailed"
-	}
-	res, err := s.app.GenerateAIPRD(opts, hub.SourceUI)
+	res, err := s.app.GenerateAIPRD(prd.Options{
+		TargetStack: body.TargetStack,
+		// Cenários de teste vêm por padrão, como no CLI e no MCP.
+		IncludeTestScenarios: body.IncludeTestScenarios == nil || *body.IncludeTestScenarios,
+		Granularity:          body.Granularity,
+	}, hub.SourceUI)
 	if err != nil {
 		fail(w, http.StatusInternalServerError, err)
 		return
@@ -564,11 +597,12 @@ func (s *Server) generatePRD(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getTasks(w http.ResponseWriter, r *http.Request) {
-	tasks, board, err := s.app.ImplementationTasks(r.URL.Query().Get("status"))
+	list, err := s.app.ImplementationTasks(app.TaskQuery{Status: r.URL.Query().Get("status")})
 	if err != nil {
 		fail(w, http.StatusBadRequest, err)
 		return
 	}
+	tasks, board := list.Tasks, list.Board
 	writeJSON(w, http.StatusOK, map[string]any{
 		"tasks":        tasks,
 		"total":        len(board.Tasks),
@@ -608,30 +642,14 @@ func (s *Server) validate(w http.ResponseWriter, r *http.Request) {
 // Handlers — arquivos brutos
 // ---------------------------------------------------------------------------
 
-// allowedRawPrefixes limita a leitura/escrita direta às pastas do projeto.
-var allowedRawPrefixes = []string{store.DirDocs + "/", store.DirArch + "/", store.DirAPI + "/"}
-
-func rawPathAllowed(p string) bool {
-	for _, prefix := range allowedRawPrefixes {
-		if strings.HasPrefix(p, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
 func (s *Server) getFile(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
-	if !rawPathAllowed(path) {
-		fail(w, http.StatusForbidden, fmt.Errorf("caminho não permitido: %q", path))
-		return
-	}
-	data, err := s.app.Store().ReadFile(path)
+	content, err := s.app.ReadProjectFile(path)
 	if err != nil {
-		fail(w, http.StatusNotFound, err)
+		fail(w, http.StatusBadRequest, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"path": path, "content": string(data)})
+	writeJSON(w, http.StatusOK, map[string]string{"path": path, "content": content})
 }
 
 func (s *Server) putFile(w http.ResponseWriter, r *http.Request) {
@@ -643,15 +661,10 @@ func (s *Server) putFile(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, err)
 		return
 	}
-	if !rawPathAllowed(body.Path) {
-		fail(w, http.StatusForbidden, fmt.Errorf("caminho não permitido: %q", body.Path))
-		return
-	}
-	if err := s.app.Store().WriteFile(body.Path, []byte(body.Content)); err != nil {
+	if err := s.app.WriteProjectFile(body.Path, body.Content, hub.SourceUI); err != nil {
 		fail(w, http.StatusInternalServerError, err)
 		return
 	}
-	s.hub.Broadcast(hub.Event{Type: hub.EventDocs, Source: hub.SourceUI, Path: body.Path})
 	writeJSON(w, http.StatusOK, map[string]bool{"saved": true})
 }
 
@@ -660,27 +673,20 @@ func (s *Server) putFile(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------------
 
 func (s *Server) exportSVG(w http.ResponseWriter, r *http.Request) {
-	snap, err := s.app.Snapshot()
+	q := r.URL.Query()
+	svg, filename, err := s.app.DiagramSVG(app.DiagramSVGOptions{
+		Executive:   q.Get("mode") == "executive",
+		Dark:        q.Get("theme") == "dark",
+		Transparent: q.Get("transparent") == "1",
+		NoTitle:     q.Get("title") == "0",
+	})
 	if err != nil {
 		fail(w, http.StatusBadRequest, err)
 		return
 	}
-	q := r.URL.Query()
-	opts := svgexport.Options{
-		Executive:   q.Get("mode") == "executive",
-		Dark:        q.Get("theme") == "dark",
-		Transparent: q.Get("transparent") == "1",
-		Title:       snap.Manifest.ProjectName,
-		Subtitle:    snap.Manifest.Description,
-	}
-	if q.Get("title") == "0" {
-		opts.Title, opts.Subtitle = "", ""
-	}
-	svg := svgexport.Render(snap.Diagram, opts)
 	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
 	if q.Get("download") == "1" {
-		w.Header().Set("Content-Disposition",
-			fmt.Sprintf(`attachment; filename="%s-arquitetura.svg"`, model.Slugify(snap.Manifest.ProjectName)))
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	}
 	_, _ = w.Write([]byte(svg))
 }
@@ -689,33 +695,44 @@ func (s *Server) exportSVG(w http.ResponseWriter, r *http.Request) {
 // Frontend embutido (SPA fallback)
 // ---------------------------------------------------------------------------
 
-func (s *Server) staticHandler() http.Handler {
-	assets, err := webui.FS()
-	if err != nil {
+func (s *Server) host() string {
+	if s.opts.Host == "" {
+		return "web"
+	}
+	return s.opts.Host
+}
+
+func (s *Server) staticHandler() http.Handler { return Frontend(s.opts.Assets, s.host()) }
+
+// Frontend serve o frontend compilado como SPA: arquivos existentes vão como
+// estão (assets/ com cache longo) e qualquer outra rota recebe o index.html,
+// com <meta name="archcode-host" content="host"> para o frontend saber se
+// roda no navegador ou no app desktop.
+func Frontend(assets fs.FS, host string) http.Handler {
+	if assets == nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "frontend não embutido neste binário", http.StatusNotImplemented)
 		})
 	}
+	index := indexHTML(assets, host)
 	fileServer := http.FileServer(http.FS(assets))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
-		if path == "" {
-			path = "index.html"
-		}
-		if f, err := assets.Open(path); err == nil {
-			info, statErr := f.(fs.File).Stat()
-			_ = f.Close()
-			if statErr == nil && !info.IsDir() {
-				if strings.HasPrefix(path, "assets/") {
-					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		if path != "" && path != "index.html" {
+			if f, err := assets.Open(path); err == nil {
+				info, statErr := f.Stat()
+				_ = f.Close()
+				if statErr == nil && !info.IsDir() {
+					if strings.HasPrefix(path, "assets/") {
+						w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+					}
+					fileServer.ServeHTTP(w, r)
+					return
 				}
-				fileServer.ServeHTTP(w, r)
-				return
 			}
 		}
-		// SPA: qualquer rota desconhecida devolve o index.
-		index, err := fs.ReadFile(assets, "index.html")
-		if err != nil {
+		// SPA: a raiz e qualquer rota desconhecida devolvem o index.
+		if index == nil {
 			http.Error(w, "frontend não encontrado", http.StatusNotFound)
 			return
 		}
@@ -723,4 +740,13 @@ func (s *Server) staticHandler() http.Handler {
 		w.Header().Set("Cache-Control", "no-cache")
 		_, _ = w.Write(index)
 	})
+}
+
+func indexHTML(assets fs.FS, host string) []byte {
+	index, err := fs.ReadFile(assets, "index.html")
+	if err != nil {
+		return nil
+	}
+	meta := fmt.Sprintf(`<meta name="archcode-host" content="%s">`, host)
+	return bytes.Replace(index, []byte("<head>"), []byte("<head>\n    "+meta), 1)
 }

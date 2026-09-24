@@ -3,6 +3,7 @@
 import { FileCode2, Network, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
+import { errorMessage } from '../../lib/errors'
 import type { Endpoint, Snapshot } from '../../lib/types'
 import { ViewFrame } from '../shell/ViewFrame'
 import { Badge, Button, EmptyState, Field, Input, Modal, Select, Textarea, useToast } from '../ui'
@@ -28,7 +29,7 @@ export function ApiView({ snapshot }: { snapshot: Snapshot }) {
     try {
       const res = await api.exportOpenAPI()
       toast('success', `OpenAPI 3.1 exportado em ${res.file_path}`)
-    } catch (err) { toast('error', (err as Error).message) } finally { setExporting(false) }
+    } catch (err) { toast('error', errorMessage(err)) } finally { setExporting(false) }
   }
 
   const remove = async (id: string) => {
@@ -36,7 +37,7 @@ export function ApiView({ snapshot }: { snapshot: Snapshot }) {
     try {
       await api.deleteEndpoint(id)
       toast('success', 'Contrato removido')
-    } catch (err) { toast('error', (err as Error).message) }
+    } catch (err) { toast('error', errorMessage(err)) }
   }
 
   const save = async (ep: Endpoint) => {
@@ -44,7 +45,7 @@ export function ApiView({ snapshot }: { snapshot: Snapshot }) {
       await api.upsertEndpoint(ep)
       toast('success', `${ep.method} ${ep.path} salvo`)
       setEditing(null)
-    } catch (err) { toast('error', (err as Error).message) }
+    } catch (err) { toast('error', errorMessage(err)) }
   }
 
   const label = (id?: string) =>

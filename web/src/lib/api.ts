@@ -1,13 +1,13 @@
 // Chamadas de domínio tipadas. Nenhum componente monta URLs manualmente.
 
-import { transport } from './transport'
+import { client } from './transport'
 import type {
   ADR, ArchEdge, ArchNode, Diagram, Endpoint, EndpointsSpec, Estimate,
   DocumentMeta, LintReport, PricingConfig, ReqDocument, Requirement, RequirementsDoc, Snapshot, Task, UMLDiagram, UMLElement,
   UMLKind, UMLRelation, UseCase,
 } from './types'
 
-const { request } = { request: transport.request.bind(transport) }
+const request = client.request.bind(client)
 
 export interface NodeInput {
   label?: string
@@ -50,6 +50,28 @@ export interface EdgeInput {
   animated?: boolean
 }
 
+function svgPath(opts: SvgOptions): string {
+  const params = new URLSearchParams()
+  if (opts.mode) params.set('mode', opts.mode)
+  if (opts.theme) params.set('theme', opts.theme)
+  if (opts.transparent) params.set('transparent', '1')
+  if (opts.download) params.set('download', '1')
+  if (opts.title === false) params.set('title', '0')
+  return `/api/export/svg?${params.toString()}`
+}
+
+/**
+ * As figuras do documento vêm com caminhos do servidor; viram URLs absolutas
+ * para que a pré-visualização, a impressão (iframe sem origem própria) e o
+ * DOCX as encontrem em qualquer host.
+ */
+function withFigureUrls(doc: ReqDocument): ReqDocument {
+  return {
+    ...doc,
+    blocks: doc.blocks.map((b) => (b.type === 'image' ? { ...b, src: client.resourceUrl(b.src) } : b)),
+  }
+}
+
 /**
  * Servidores antigos serializavam listas vazias como `null` (slice nil do Go).
  * Normaliza aqui para que nenhuma tela precise se defender campo a campo.
@@ -66,7 +88,14 @@ function normalizeEstimate(e: Estimate): Estimate {
 }
 
 export const api = {
-  health: () => request<{ status: string; version: string; root: string; frontend: boolean }>('GET', '/api/health'),
+  /**
+   * `mcp_sse_url` vazio (ou ausente em servidores antigos) = MCP via SSE não exposto;
+   * `mcp_command` é o executável do MCP via stdio (a CLI ou o app desktop).
+   */
+  health: () => request<{
+    status: string; version: string; root: string; frontend: boolean
+    host?: 'web' | 'desktop'; mcp_sse_url?: string; mcp_command?: string
+  }>('GET', '/api/health'),
   snapshot: () => request<Snapshot>('GET', '/api/snapshot'),
 
   // Diagrama
@@ -108,13 +137,13 @@ export const api = {
     request<{ deleted: boolean }>('DELETE', `/api/uml/${encodeURIComponent(diagramId)}/relations/${encodeURIComponent(id)}`),
 
   // Documento de Requisitos
-  reqDocument: () => request<ReqDocument>('GET', '/api/reqdoc'),
+  reqDocument: () => request<ReqDocument>('GET', '/api/reqdoc').then(withFigureUrls),
   getDocumentMeta: () => request<DocumentMeta>('GET', '/api/reqdoc/meta'),
   saveDocumentMeta: (meta: DocumentMeta) => request<DocumentMeta>('PUT', '/api/reqdoc/meta', meta),
   saveReqDocument: () => request<{ file: string; images: string[] }>('POST', '/api/reqdoc/save', {}),
-  reqDocumentMarkdownUrl: (embed = true) => transport.resourceUrl(`/api/reqdoc/markdown${embed ? '?embed=1' : ''}`),
-  umlSvgUrl: (id: string, dark = false) =>
-    transport.resourceUrl(`/api/export/uml/${encodeURIComponent(id)}.svg${dark ? '?theme=dark' : ''}`),
+  reqDocumentMarkdown: (embed = true) => client.fetchBlob(`/api/reqdoc/markdown${embed ? '?embed=1' : ''}`),
+  /** Figura do documento (URL já resolvida por `reqDocument`). */
+  fetchFigure: (url: string) => client.fetchBlob(url),
 
   // Documentação
   getRequirements: () => request<{ doc: RequirementsDoc; raw: string }>('GET', '/api/requirements'),
@@ -166,18 +195,5 @@ export const api = {
   writeFile: (path: string, content: string) => request<{ saved: boolean }>('PUT', '/api/file', { path, content }),
 
   // Exportação
-  svgUrl: (opts: SvgOptions): string => {
-    const params = new URLSearchParams()
-    if (opts.mode) params.set('mode', opts.mode)
-    if (opts.theme) params.set('theme', opts.theme)
-    if (opts.transparent) params.set('transparent', '1')
-    if (opts.download) params.set('download', '1')
-    if (opts.title === false) params.set('title', '0')
-    return transport.resourceUrl(`/api/export/svg?${params.toString()}`)
-  },
-  fetchSvg: async (opts: SvgOptions): Promise<string> => {
-    const res = await fetch(api.svgUrl(opts))
-    if (!res.ok) throw new Error('falha ao gerar SVG')
-    return res.text()
-  },
+  exportSvg: (opts: SvgOptions): Promise<string> => client.fetchBlob(svgPath(opts)).then((b) => b.text()),
 }

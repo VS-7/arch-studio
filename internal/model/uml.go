@@ -77,20 +77,6 @@ var UMLDefaultSizes = map[string][2]float64{
 	"fork": {120, 8}, "join": {120, 8}, "history": {32, 32},
 }
 
-// ErrUMLNotFound é a causa raiz de todo "diagrama/elemento/relação inexistente",
-// permitindo à camada HTTP responder 404 sem inspecionar mensagens.
-var ErrUMLNotFound = errors.New("item UML não encontrado")
-
-type umlNotFound struct{ msg string }
-
-func (e *umlNotFound) Error() string { return e.msg }
-func (e *umlNotFound) Unwrap() error { return ErrUMLNotFound }
-
-// UMLNotFound cria um erro legível que satisfaz errors.Is(err, ErrUMLNotFound).
-func UMLNotFound(format string, args ...any) error {
-	return &umlNotFound{msg: fmt.Sprintf(format, args...)}
-}
-
 // UMLMember é um atributo ou operação de classe/interface.
 type UMLMember struct {
 	Name       string `json:"name"`
@@ -604,11 +590,11 @@ func (d *UMLDiagram) ValidateUMLRelation(r UMLRelation) error {
 	}
 	src := d.ElementByID(r.Source)
 	if src == nil {
-		return UMLNotFound("elemento de origem não encontrado: %q", r.Source)
+		return NotFound("elemento de origem não encontrado: %q", r.Source)
 	}
 	dst := d.ElementByID(r.Target)
 	if dst == nil {
-		return UMLNotFound("elemento de destino não encontrado: %q", r.Target)
+		return NotFound("elemento de destino não encontrado: %q", r.Target)
 	}
 	if r.Source == r.Target && r.Type != "message" && r.Type != "transition" {
 		return fmt.Errorf("relação %s não pode ligar um elemento a ele mesmo", r.Type)

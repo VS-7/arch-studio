@@ -6,21 +6,23 @@ import {
   type ReactNode,
 } from 'react'
 import { api } from './api'
-import { transport } from './transport'
-import { ApiError } from './transport'
+import { ApiError } from './errors'
+import { events } from './transport'
 import type { LintReport, ServerEvent, Snapshot } from './types'
+
+/** Falha ao carregar o projeto; status é o HTTP (409 = nenhum projeto aberto no app desktop). */
+export interface ProjectError { message: string; hint?: string; status?: number }
 
 interface ProjectState {
   snapshot: Snapshot | null
   lint: LintReport | null
   loading: boolean
-  error: { message: string; hint?: string } | null
+  error: ProjectError | null
   connected: boolean
   /** Id do nó recém-criado por um agente de IA, para destacar no canvas. */
   highlight: string | null
   lastEvent: ServerEvent | null
   refresh: (options?: { silent?: boolean }) => Promise<void>
-  clearHighlight: () => void
 }
 
 const Context = createContext<ProjectState | null>(null)
@@ -44,7 +46,7 @@ export function ProjectProvider({
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
   const [lint, setLint] = useState<LintReport | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<{ message: string; hint?: string } | null>(null)
+  const [error, setError] = useState<ProjectError | null>(null)
   const [connected, setConnected] = useState(false)
   const [highlight, setHighlight] = useState<string | null>(null)
   const [lastEvent, setLastEvent] = useState<ServerEvent | null>(null)
@@ -61,7 +63,7 @@ export function ProjectProvider({
       if (report) setLint(report)
       setError(null)
     } catch (err) {
-      if (err instanceof ApiError) setError({ message: err.message, hint: err.hint })
+      if (err instanceof ApiError) setError({ message: err.message, hint: err.hint, status: err.status })
       else setError({ message: err instanceof Error ? err.message : 'falha desconhecida' })
     } finally {
       setLoading(false)
@@ -79,7 +81,7 @@ export function ProjectProvider({
 
   useEffect(() => {
     void refresh()
-    const unsubscribe = transport.subscribe((event) => {
+    const unsubscribe = events.subscribe((event) => {
       onEventRef.current?.(event)
       if (event.type === 'connection') { setConnected(true); scheduleReload(); return }
       if (event.type === 'disconnection') { setConnected(false); return }
@@ -100,8 +102,7 @@ export function ProjectProvider({
   }, [refresh, scheduleReload])
 
   const value = useMemo<ProjectState>(() => ({
-    snapshot, lint, loading, error, connected, highlight, lastEvent,
-    refresh, clearHighlight: () => setHighlight(null),
+    snapshot, lint, loading, error, connected, highlight, lastEvent, refresh,
   }), [snapshot, lint, loading, error, connected, highlight, lastEvent, refresh])
 
   return <Context.Provider value={value}>{children}</Context.Provider>

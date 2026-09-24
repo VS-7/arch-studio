@@ -181,7 +181,7 @@ func (a *App) AddUMLElement(diagramID string, in UMLElementInput, source string)
 	if el.ParentID != "" {
 		parent := d.ResolveElement(el.ParentID)
 		if parent == nil {
-			return nil, model.UMLNotFound("elemento pai não encontrado: %q", el.ParentID)
+			return nil, model.NotFound("elemento pai não encontrado: %q", el.ParentID)
 		}
 		el.ParentID = parent.ID
 	}
@@ -219,7 +219,7 @@ func (a *App) UpdateUMLElement(diagramID, elementID string, patch map[string]any
 	}
 	el := d.ResolveElement(elementID)
 	if el == nil {
-		return nil, model.UMLNotFound("elemento não encontrado: %q", elementID)
+		return nil, model.NotFound("elemento não encontrado: %q", elementID)
 	}
 	id := el.ID
 	var merged model.UMLElement
@@ -231,7 +231,7 @@ func (a *App) UpdateUMLElement(diagramID, elementID string, patch map[string]any
 	if merged.ParentID != "" {
 		parent := d.ResolveElement(merged.ParentID)
 		if parent == nil {
-			return nil, model.UMLNotFound("elemento pai não encontrado: %q", merged.ParentID)
+			return nil, model.NotFound("elemento pai não encontrado: %q", merged.ParentID)
 		}
 		if parent.ID == id {
 			return nil, errors.New("um elemento não pode conter a si mesmo")
@@ -262,7 +262,7 @@ func (a *App) RemoveUMLElement(diagramID, elementID, source string) error {
 	}
 	el := d.ResolveElement(elementID)
 	if el == nil {
-		return model.UMLNotFound("elemento não encontrado: %q", elementID)
+		return model.NotFound("elemento não encontrado: %q", elementID)
 	}
 	name := displayName(*el)
 	d.RemoveElement(el.ID)
@@ -287,11 +287,11 @@ func (a *App) AddUMLRelation(diagramID string, rel model.UMLRelation, source str
 	rel.Type = strings.ToLower(strings.TrimSpace(rel.Type))
 	src := d.ResolveElement(rel.Source)
 	if src == nil {
-		return nil, model.UMLNotFound("elemento de origem não encontrado: %q", rel.Source)
+		return nil, model.NotFound("elemento de origem não encontrado: %q", rel.Source)
 	}
 	dst := d.ResolveElement(rel.Target)
 	if dst == nil {
-		return nil, model.UMLNotFound("elemento de destino não encontrado: %q", rel.Target)
+		return nil, model.NotFound("elemento de destino não encontrado: %q", rel.Target)
 	}
 	rel.Source, rel.Target = src.ID, dst.ID
 	if rel.Type == "message" && rel.MessageKind == "" {
@@ -339,7 +339,7 @@ func (a *App) UpdateUMLRelation(diagramID, relationID string, patch map[string]a
 	}
 	rel := d.RelationByID(relationID)
 	if rel == nil {
-		return nil, model.UMLNotFound("relação não encontrada: %q", relationID)
+		return nil, model.NotFound("relação não encontrada: %q", relationID)
 	}
 	id, oldOrder := rel.ID, rel.Order
 	var merged model.UMLRelation
@@ -351,14 +351,14 @@ func (a *App) UpdateUMLRelation(diagramID, relationID string, patch map[string]a
 	if _, ok := patch["source"]; ok {
 		src := d.ResolveElement(merged.Source)
 		if src == nil {
-			return nil, model.UMLNotFound("elemento de origem não encontrado: %q", merged.Source)
+			return nil, model.NotFound("elemento de origem não encontrado: %q", merged.Source)
 		}
 		merged.Source = src.ID
 	}
 	if _, ok := patch["target"]; ok {
 		dst := d.ResolveElement(merged.Target)
 		if dst == nil {
-			return nil, model.UMLNotFound("elemento de destino não encontrado: %q", merged.Target)
+			return nil, model.NotFound("elemento de destino não encontrado: %q", merged.Target)
 		}
 		merged.Target = dst.ID
 	}
@@ -397,7 +397,7 @@ func (a *App) RemoveUMLRelation(diagramID, relationID, source string) error {
 		return err
 	}
 	if !d.RemoveRelation(relationID) {
-		return model.UMLNotFound("relação não encontrada: %q", relationID)
+		return model.NotFound("relação não encontrada: %q", relationID)
 	}
 	if err := a.saveUML(d); err != nil {
 		return err
@@ -419,7 +419,7 @@ func (a *App) RemoveUMLItem(diagramID, id, source string) (string, error) {
 	if d.ResolveElement(id) != nil {
 		return "element", a.RemoveUMLElement(diagramID, id, source)
 	}
-	return "", model.UMLNotFound("nenhum elemento ou relação com id %q no diagrama %q", id, diagramID)
+	return "", model.NotFound("nenhum elemento ou relação com id %q no diagrama %q", id, diagramID)
 }
 
 // GenerateUseCaseDiagram cria (ou completa) o diagrama de casos de uso a partir
@@ -442,7 +442,7 @@ func (a *App) GenerateUseCaseDiagram(name, source string) (*model.UMLDiagram, er
 	d, err := a.st.LoadUMLDiagram(DefaultUseCaseDiagramID)
 	created := false
 	switch {
-	case errors.Is(err, model.ErrUMLNotFound):
+	case errors.Is(err, model.ErrNotFound):
 		if name == "" {
 			name = "Casos de Uso"
 		}

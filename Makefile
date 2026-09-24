@@ -1,7 +1,8 @@
 # ArchCode Studio — automação de build.
 #
 # `make build` produz um binário único, sem dependências externas, com o
-# frontend React compilado embutido via embed.FS.
+# frontend React compilado embutido via embed.FS. `make desktop` produz o app
+# desktop (Wails v3, módulo em desktop/) com o mesmo frontend.
 
 BINARY      := archcode-studio
 VERSION     ?= 1.0.0
@@ -61,7 +62,7 @@ lint: ## Formatação e análise estática
 	$(GO) vet ./...
 
 .PHONY: check
-check: lint test typecheck ## Executa tudo que a CI executa
+check: lint test typecheck desktop-test ## Executa tudo que a CI executa (menos o build nativo do desktop)
 
 .PHONY: release
 release: web ## Compila binários para todas as plataformas em dist/
@@ -74,6 +75,36 @@ release: web ## Compila binários para todas as plataformas em dist/
 			-ldflags "$(LDFLAGS)" -o dist/$(BINARY)-$$os-$$arch$$ext ./cmd/archcode-studio; \
 	done
 	@echo "✓ binários em dist/"
+
+# ---------------------------------------------------------------------------
+# App desktop (Wails v3) — módulo Go próprio em desktop/, que exige CGO no Linux
+# e no macOS. Linux: libgtk-4-dev e libwebkitgtk-6.0-dev (ou, com
+# DESKTOP_TAGS="production gtk3", libgtk-3-dev e libwebkit2gtk-4.1-dev).
+# ---------------------------------------------------------------------------
+
+DESKTOP_BIN  := archcode-desktop
+DESKTOP_TAGS ?= production
+
+.PHONY: desktop
+desktop: web ## Compila o app desktop para o sistema atual em dist/
+	@mkdir -p dist
+	cd desktop && CGO_ENABLED=1 $(GO) build -trimpath -tags "$(DESKTOP_TAGS)" -ldflags "$(LDFLAGS)" -o ../dist/$(DESKTOP_BIN) .
+	@echo "✓ dist/$(DESKTOP_BIN) pronto"
+
+.PHONY: desktop-windows
+desktop-windows: web ## Compila o app desktop para Windows (sem CGO, funciona de qualquer sistema)
+	@mkdir -p dist
+	cd desktop && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build -trimpath -tags "$(DESKTOP_TAGS)" \
+		-ldflags "$(LDFLAGS) -H windowsgui" -o ../dist/$(DESKTOP_BIN)-windows-amd64.exe .
+	@echo "✓ dist/$(DESKTOP_BIN)-windows-amd64.exe pronto"
+
+.PHONY: desktop-dev
+desktop-dev: web ## Roda o app desktop em modo de desenvolvimento (DevTools habilitado)
+	cd desktop && CGO_ENABLED=1 $(GO) run .
+
+.PHONY: desktop-test
+desktop-test: ## Testes do app desktop que não dependem da interface gráfica
+	cd desktop && $(GO) vet ./internal/... && $(GO) test ./internal/...
 
 .PHONY: docker
 docker: ## Constrói a imagem Docker

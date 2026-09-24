@@ -4,6 +4,7 @@
 import { Bot, FileSignature, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { api } from '../../lib/api'
+import { errorMessage } from '../../lib/errors'
 import type { Snapshot } from '../../lib/types'
 import { ViewFrame } from '../shell/ViewFrame'
 import { Button, EmptyState, Spinner, useToast } from '../ui'
@@ -72,7 +73,7 @@ export function ProposalView({ snapshot }: { snapshot: Snapshot }) {
       })
       setContent(res.markdown)
       toast('success', `Proposta gerada em ${res.file_path}`)
-    } catch (err) { toast('error', (err as Error).message) } finally { setGenerating(false) }
+    } catch (err) { toast('error', errorMessage(err)) } finally { setGenerating(false) }
   }
 
   return (

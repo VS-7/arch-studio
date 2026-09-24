@@ -10,14 +10,14 @@ import {
   getNodesBounds, getViewportForBounds, useEdgesState, useNodesState,
   type Connection, type NodeChange, type ReactFlowInstance, type XYPosition,
 } from '@xyflow/react'
-import { toPng, toSvg } from 'html-to-image'
-import {
-  ArrowLeftRight, ClipboardPaste, Copy, CopyPlus, Maximize, Pencil, Plus, Scissors, SquareDashedMousePointer,
-  Trash2,
-} from 'lucide-react'
+import { toBlob, toSvg } from 'html-to-image'
+import { ArrowLeftRight, ClipboardPaste, Maximize, Pencil, Plus, SquareDashedMousePointer, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../../lib/api'
 import { clipboard } from '../../lib/clipboard'
+import { errorMessage } from '../../lib/errors'
+import { slugify } from '../../lib/format'
+import { platform } from '../../lib/platform'
 import type { Tool } from '../../lib/tools'
 import type { UMLDiagram, UMLElement, UMLElementType, UMLRelationType } from '../../lib/types'
 import {
@@ -30,6 +30,9 @@ import {
 } from '../../lib/umlOps'
 import { CanvasControls } from '../canvas/CanvasControls'
 import { CanvasMenu, type CanvasCommands, type CanvasMenuItem, type CanvasMenuState } from '../canvas/CanvasMenu'
+import {
+  FLOW_DEFAULTS, editMenuItems, isFreshViewport, markSelected, useExternalSelection, useRunCommand,
+} from '../canvas/flowShared'
 import { useToast } from '../ui'
 import { MessageEdge, UmlEdge, UmlMarkers, type UmlFlowEdge } from './UmlEdges'
 import { ElementGlyph, RelationGlyph } from './UmlGlyph'
@@ -64,11 +67,13 @@ async function exportDiagram(
     // Alças de conexão e redimensionamento não fazem parte do desenho.
     filter: (node: HTMLElement) => !node.classList?.contains('react-flow__handle') && !node.classList?.contains('react-flow__resize-control'),
   }
-  const url = format === 'png' ? await toPng(viewport, options) : await toSvg(viewport, options)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'diagrama'}.${format}`
-  a.click()
+  // toSvg devolve um data URL com o SVG codificado; o arquivo é o SVG em si.
+  const svgBlob = async () => {
+    const url = await toSvg(viewport, options)
+    return new Blob([decodeURIComponent(url.slice(url.indexOf(',') + 1))], { type: 'image/svg+xml' })
+  }
+  const blob = format === 'png' ? await toBlob(viewport, options) : await svgBlob()
+  if (blob) await platform.saveFile(blob, `${slugify(name, 'diagrama')}.${format}`)
 }
 
 interface Props {
@@ -82,7 +87,8 @@ interface Props {
   onCreated: (id: string) => void
   /** Pede ao Editor para focar o campo Nome do elemento (duplo clique / F2). */
   onRename?: (id: string) => void
-  onReady?: (handle: UmlCanvasHandle) => void
+  /** Recebe os comandos do canvas; null ao desmontar. */
+  onReady?: (handle: UmlCanvasHandle | null) => void
   onZoom?: (zoom: number) => void
   highlight?: string | null
 }
@@ -174,10 +180,11 @@ export function UmlCanvas({
   diagram, tool, onToolDone, selectedId, onSelect, onSelectionChange, onCreated, onRename, onReady, onZoom, highlight,
 }: Props) {
   const toast = useToast()
+  const run = useRunCommand()
   // Callbacks do Shell mudam a cada render; guardá-los em ref mantém os comandos
   // estáveis (senão onReady → setHandle → novo render → novos callbacks: laço).
-  const cb = useRef({ onSelect, onSelectionChange, onCreated, onRename, onToolDone })
-  cb.current = { onSelect, onSelectionChange, onCreated, onRename, onToolDone }
+  const cb = useRef({ onSelect, onSelectionChange, onCreated, onRename, onToolDone, onReady })
+  cb.current = { onSelect, onSelectionChange, onCreated, onRename, onToolDone, onReady }
   const [pending, setPending] = useState<string | null>(null)
   const [menu, setMenu] = useState<CanvasMenuState | null>(null)
   const [nodes, setNodes, onNodesChange] = useNodesState<UmlFlowNode>([])
@@ -219,14 +226,10 @@ export function UmlCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature, diagram, setNodes, setEdges])
 
-  // Seleção vinda de fora (Model Explorer, Editor) reflete no canvas.
-  useEffect(() => {
-    if (selectedId === null) return
-    const isRel = diagramRef.current.relations.some((r) => r.id === selectedId)
-    selection.current = isRel ? { elements: [], relations: [selectedId] } : { elements: [selectedId], relations: [] }
-    setNodes((ns) => ns.map((n) => (n.selected === (n.id === selectedId) ? n : { ...n, selected: n.id === selectedId })))
-    setEdges((es) => es.map((e) => (e.selected === (e.id === selectedId) ? e : { ...e, selected: e.id === selectedId })))
-  }, [selectedId, setNodes, setEdges])
+  useExternalSelection(selectedId, setNodes, setEdges, (id) => {
+    const isRel = diagramRef.current.relations.some((r) => r.id === id)
+    selection.current = isRel ? { elements: [], relations: [id] } : { elements: [id], relations: [] }
+  })
 
   const onFlowSelectionChange = useCallback(({ nodes: ns, edges: es }: { nodes: UmlFlowNode[]; edges: UmlFlowEdge[] }) => {
     selection.current = { elements: ns.map((n) => n.id), relations: es.map((e) => e.id) }
@@ -247,7 +250,7 @@ export function UmlCanvas({
       return true
     } catch (err) {
       pendingSelect.current = null
-      toast('error', (err as Error).message)
+      toast('error', errorMessage(err))
       return false
     }
   }, [toast])
@@ -307,7 +310,7 @@ export function UmlCanvas({
       pendingSelect.current = { elements: [el.id], relations: [] }
       cb.current.onCreated(el.id)
     } catch (err) {
-      toast('error', (err as Error).message)
+      toast('error', errorMessage(err))
     }
   }, [diagram, toast])
 
@@ -329,7 +332,7 @@ export function UmlCanvas({
       pendingSelect.current = { elements: [], relations: [rel.id] }
       cb.current.onSelect({ kind: 'relation', id: rel.id })
     } catch (err) {
-      toast('error', (err as Error).message)
+      toast('error', errorMessage(err))
     }
   }, [diagram, toast])
 
@@ -353,7 +356,7 @@ export function UmlCanvas({
     try {
       await api.updateUMLElement(diagram.id, elId, { [which]: [...list, member] })
       cb.current.onSelect({ kind: 'element', id: elId })
-    } catch (err) { toast('error', (err as Error).message) }
+    } catch (err) { toast('error', errorMessage(err)) }
   }, [diagram.id, toast])
 
   /* Comandos (atalhos e menus) -------------------------------------------------- */
@@ -422,10 +425,8 @@ export function UmlCanvas({
     })
   }, [instance, onReady, diagram.name, commands])
 
-  /** Executa um comando e mostra o resultado (menus de contexto). */
-  const run = useCallback((fn: () => Promise<string | null> | string | null) => {
-    void Promise.resolve(fn()).then((msg) => { if (msg) toast('success', `${msg} · Ctrl+Z desfaz`) })
-  }, [toast])
+  // Ao desmontar, o Shell não pode continuar com comandos de um canvas que sumiu.
+  useEffect(() => () => cb.current.onReady?.(null), [])
 
   /* Menus de contexto ------------------------------------------------------------ */
 
@@ -439,13 +440,7 @@ export function UmlCanvas({
     }))
   }, [createElement, diagram.kind])
 
-  const editItems = useCallback((): CanvasMenuItem[] => [
-    { type: 'item', label: 'Recortar', icon: <Scissors />, shortcut: 'Ctrl+X', onSelect: () => run(commands.cut) },
-    { type: 'item', label: 'Copiar', icon: <Copy />, shortcut: 'Ctrl+C', onSelect: () => run(commands.copy) },
-    { type: 'item', label: 'Duplicar', icon: <CopyPlus />, shortcut: 'Ctrl+D', onSelect: () => run(commands.duplicate) },
-    { type: 'separator' },
-    { type: 'item', label: 'Excluir', icon: <Trash2 />, shortcut: 'Del', destructive: true, onSelect: () => run(commands.deleteSelected) },
-  ], [commands, run])
+  const editItems = useCallback(() => editMenuItems(commands, run), [commands, run])
 
   const openPaneMenu = useCallback((clientX: number, clientY: number, title?: string) => {
     if (!instance) return
@@ -493,9 +488,7 @@ export function UmlCanvas({
 
   const selectOnly = useCallback((sel: Selected) => {
     selection.current = sel
-    const set = new Set([...sel.elements, ...sel.relations])
-    setNodes((ns) => ns.map((n) => ({ ...n, selected: set.has(n.id) })))
-    setEdges((es) => es.map((e) => ({ ...e, selected: set.has(e.id) })))
+    markSelected(setNodes, setEdges, new Set([...sel.elements, ...sel.relations]))
     cb.current.onSelectionChange?.(sel)
   }, [setEdges, setNodes])
 
@@ -532,7 +525,7 @@ export function UmlCanvas({
         ...(rel.source !== rel.target ? [{
           type: 'item' as const, label: 'Inverter sentido', icon: <ArrowLeftRight />,
           onSelect: () => void api.updateUMLRelation(diagram.id, rel.id, { source: rel.target, target: rel.source })
-            .catch((err: unknown) => toast('error', (err as Error).message)),
+            .catch((err: unknown) => toast('error', errorMessage(err))),
         }] : []),
         { type: 'separator' },
         { type: 'item', label: 'Excluir', icon: <Trash2 />, shortcut: 'Del', destructive: true, onSelect: () => run(commands.deleteSelected) },
@@ -637,12 +630,9 @@ export function UmlCanvas({
   }, [createElement, diagram.kind, instance])
 
   const cursor = tool.mode === 'element' ? 'crosshair' : tool.mode === 'relation' ? 'alias' : undefined
-  const fitOnMount = useMemo(() => {
-    const vp = diagram.viewport
-    return !vp || (vp.x === 0 && vp.y === 0 && (vp.zoom === 1 || !vp.zoom))
-    // Só na montagem: depois o viewport é do usuário.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [diagram.id])
+  // Só na montagem: depois o viewport é do usuário.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const fitOnMount = useMemo(() => isFreshViewport(diagram.viewport), [diagram.id])
 
   return (
     <UmlActionsContext.Provider value={actions}>
@@ -682,18 +672,12 @@ export function UmlCanvas({
         fitView={fitOnMount}
         fitViewOptions={{ padding: 0.15, maxZoom: 1.1 }}
         defaultViewport={fitOnMount ? undefined : diagram.viewport}
+        {...FLOW_DEFAULTS}
         minZoom={0.2}
         maxZoom={3}
-        snapToGrid
         snapGrid={[10, 10]}
-        panOnScroll
         selectionOnDrag
         panOnDrag={[1, 2]}
-        multiSelectionKeyCode={['Control', 'Meta', 'Shift']}
-        deleteKeyCode={null}
-        selectionKeyCode={null}
-        zoomOnDoubleClick={false}
-        proOptions={{ hideAttribution: true }}
         className="size-full"
       >
         {/* Marcadores dentro do viewport: entram também na exportação de imagem. */}

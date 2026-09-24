@@ -18,11 +18,6 @@ import { Input as UIInput } from './input'
 import { Textarea as UITextarea } from './textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip'
 
-/** Alias histórico de `cn`. */
-export function cx(...parts: (string | false | null | undefined)[]): string {
-  return cn(...parts)
-}
-
 /* -------------------------------------------------------------------------- */
 /* Button                                                                      */
 /* -------------------------------------------------------------------------- */

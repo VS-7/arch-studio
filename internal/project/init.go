@@ -45,11 +45,7 @@ func Init(st *store.Store, opts Options) (*Result, error) {
 
 	res := &Result{Root: st.Root()}
 
-	for _, dir := range []string{
-		store.DirArch, store.DirDiagrams, store.DirSequence, store.DirER,
-		store.DirUseCaseUML, store.DirClass, store.DirState,
-		store.DirDocs, store.DirUseCases, store.DirADR, store.DirAPI,
-	} {
+	for _, dir := range store.ProjectDirs {
 		abs, err := st.Path(dir)
 		if err != nil {
 			return nil, err
@@ -510,6 +506,7 @@ func starterDocumentMeta(author string) *model.DocumentMeta {
 func starterADR() *model.ADR {
 	return &model.ADR{
 		ID: "ADR-001", Title: "Autenticação baseada em JWT stateless", Status: "Aceito",
+		Date: time.Now().Format("2006-01-02"),
 		Context: "O sistema precisa autenticar clientes web e mobile sem manter sessão em memória no servidor, " +
 			"permitindo escalar horizontalmente a Core API sem sticky sessions.",
 		Decision: "Adotar JWT assinado (HS256 na fase inicial, migrando para RS256 quando houver múltiplos emissores), " +

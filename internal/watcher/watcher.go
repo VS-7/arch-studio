@@ -1,15 +1,15 @@
-// Package watcher observa a árvore do projeto e converte eventos de disco em
-// eventos de aplicação, com debounce para evitar tempestades de re-render.
+// Package watcher observa a árvore do projeto e avisa, com debounce, quais
+// arquivos mudaram fora do ArchCode Studio.
 //
 // Gravações feitas pelo próprio servidor são filtradas pelo índice de eco do
 // store, de modo que apenas edições externas (VS Code, git checkout, CLI de IA)
-// chegam ao browser.
+// são reportadas. O que fazer com a mudança (qual evento publicar) é decisão de
+// quem recebe o aviso — o pacote app.
 package watcher
 
 import (
 	"log"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -17,39 +17,33 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"github.com/archcode/studio/internal/hub"
 	"github.com/archcode/studio/internal/store"
 )
 
 const debounce = 300 * time.Millisecond
 
 type Watcher struct {
-	st  *store.Store
-	hb  *hub.Hub
-	fsw *fsnotify.Watcher
+	st       *store.Store
+	onChange func(rel string)
+	fsw      *fsnotify.Watcher
 
 	mu      sync.Mutex
 	pending map[string]time.Time
 	timer   *time.Timer
 }
 
-func New(st *store.Store, hb *hub.Hub) (*Watcher, error) {
+// New cria o watcher; onChange recebe o caminho relativo (com barras) de cada
+// arquivo alterado externamente.
+func New(st *store.Store, onChange func(rel string)) (*Watcher, error) {
 	fsw, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
 	}
-	return &Watcher{st: st, hb: hb, fsw: fsw, pending: map[string]time.Time{}}, nil
-}
-
-// watchedDirs são os diretórios monitorados recursivamente.
-var watchedDirs = []string{
-	store.DirArch, store.DirDiagrams, store.DirSequence, store.DirER,
-	store.DirUseCaseUML, store.DirClass, store.DirState,
-	store.DirDocs, store.DirUseCases, store.DirADR, store.DirAPI,
+	return &Watcher{st: st, onChange: onChange, fsw: fsw, pending: map[string]time.Time{}}, nil
 }
 
 func (w *Watcher) Start() error {
-	for _, dir := range watchedDirs {
+	for _, dir := range store.ProjectDirs {
 		abs, err := w.st.Path(dir)
 		if err != nil {
 			continue
@@ -143,59 +137,10 @@ func (w *Watcher) flush() {
 			continue
 		}
 		rel := w.st.Rel(abs)
-		evType := classify(rel)
-		if evType == "" || seen[evType+rel] {
+		if seen[rel] {
 			continue
 		}
-		seen[evType+rel] = true
-		ev := hub.Event{
-			Type:    evType,
-			Source:  hub.SourceDisk,
-			Path:    rel,
-			Message: "Arquivo alterado fora do ArchCode Studio",
-		}
-		if evType == hub.EventUML {
-			ev.Payload = map[string]any{"diagram_id": strings.TrimSuffix(path.Base(rel), ".json")}
-		}
-		w.hb.Broadcast(ev)
-	}
-}
-
-// umlDiagramFile informa se o caminho é o JSON de um diagrama UML.
-func umlDiagramFile(rel string) bool {
-	if !strings.HasSuffix(rel, ".json") {
-		return false
-	}
-	dir := path.Dir(rel)
-	for _, d := range store.UMLDirs {
-		if dir == d {
-			return true
-		}
-	}
-	return false
-}
-
-func classify(rel string) string {
-	switch {
-	case umlDiagramFile(rel):
-		return hub.EventUML
-	case rel == store.FileMacroJSON, rel == store.FileMacroMmd:
-		return hub.EventDiagram
-	case rel == store.FileEndpoints:
-		return hub.EventEndpoints
-	case rel == store.FilePricing:
-		return hub.EventPricing
-	case rel == store.FileTasks:
-		return hub.EventTasks
-	case rel == store.FileManifest:
-		return hub.EventManifest
-	case rel == store.FileDocument:
-		return hub.EventDocs
-	case strings.HasPrefix(rel, store.DirDocs+"/"):
-		return hub.EventDocs
-	case strings.HasPrefix(rel, store.DirDiagrams+"/"):
-		return hub.EventDiagram
-	default:
-		return ""
+		seen[rel] = true
+		w.onChange(rel)
 	}
 }

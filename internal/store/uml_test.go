@@ -60,10 +60,10 @@ func TestUMLRoundTrip(t *testing.T) {
 	if err := st.DeleteUMLDiagram(got); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.LoadUMLDiagram("modelo"); !errors.Is(err, model.ErrUMLNotFound) {
+	if _, err := st.LoadUMLDiagram("modelo"); !errors.Is(err, model.ErrNotFound) {
 		t.Errorf("esperado ErrUMLNotFound, got %v", err)
 	}
-	if _, err := st.LoadUMLDiagram("../manifest"); !errors.Is(err, model.ErrUMLNotFound) {
+	if _, err := st.LoadUMLDiagram("../manifest"); !errors.Is(err, model.ErrNotFound) {
 		t.Errorf("id com traversal deveria ser recusado, got %v", err)
 	}
 }

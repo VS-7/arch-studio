@@ -3,6 +3,7 @@
 import { GitBranch, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
+import { errorMessage } from '../../lib/errors'
 import { renderMarkdown } from '../../lib/markdown'
 import type { ADR, Snapshot } from '../../lib/types'
 import { ViewFrame } from '../shell/ViewFrame'
@@ -26,7 +27,7 @@ export function AdrPanel({ snapshot }: { snapshot: Snapshot }) {
       const res = await api.upsertADR(adr)
       toast('success', `${res.adr.id} salvo`)
       setEditing(null)
-    } catch (err) { toast('error', (err as Error).message) }
+    } catch (err) { toast('error', errorMessage(err)) }
   }
 
   const remove = async (id: string) => {
@@ -34,7 +35,7 @@ export function AdrPanel({ snapshot }: { snapshot: Snapshot }) {
     try {
       await api.deleteADR(id)
       toast('success', `${id} removido`)
-    } catch (err) { toast('error', (err as Error).message) }
+    } catch (err) { toast('error', errorMessage(err)) }
   }
 
   return (

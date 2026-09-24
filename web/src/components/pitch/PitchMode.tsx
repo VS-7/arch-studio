@@ -5,12 +5,15 @@
 // visão de negócio e a visão de engenharia.
 
 import {
-  ChevronLeft, ChevronRight, Download, Eye, FileImage, FileText, Maximize2, Presentation, X,
+  ChevronLeft, ChevronRight, Download, Eye, FileImage, FileText, Maximize2, X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { api } from '../../lib/api'
+import { errorMessage } from '../../lib/errors'
 import { hours as fmtHours, money } from '../../lib/format'
 import { exportPdf, exportPng, exportSvg, type ExportMode } from '../../lib/exporters'
 import { nodeMeta } from '../../lib/nodeMeta'
+import { useTheme } from '../../lib/theme'
 import type { Estimate, Snapshot } from '../../lib/types'
 import { ArchCanvas, type CanvasHandle } from '../canvas/ArchCanvas'
 import { Button, useToast } from '../ui'
@@ -23,11 +26,12 @@ interface Slide {
   spotlight: Set<string> | null
 }
 
-export function PitchMode({ snapshot, estimate, onExit }: {
-  snapshot: Snapshot; estimate: Estimate | null; onExit: () => void
-}) {
+export function PitchMode({ snapshot, onExit }: { snapshot: Snapshot; onExit: () => void }) {
   const toast = useToast()
+  const theme = useTheme()
   const [executive, setExecutive] = useState(true)
+  // A estimativa alimenta o sumário do PDF.
+  const [estimate, setEstimate] = useState<Estimate | null>(null)
   const [index, setIndex] = useState(0)
   const [busy, setBusy] = useState(false)
   const canvas = useRef<CanvasHandle | null>(null)
@@ -99,11 +103,15 @@ export function PitchMode({ snapshot, estimate, onExit }: {
     return () => window.removeEventListener('keydown', onKey)
   }, [go, index, onExit])
 
+  useEffect(() => {
+    api.estimate().then(setEstimate).catch(() => setEstimate(null))
+  }, [snapshot.diagram.last_modified, snapshot.use_cases.length, snapshot.pricing])
+
   // Trocar de modo reposiciona a apresentação no início, evitando slides órfãos.
   useEffect(() => { setIndex(0); canvas.current?.fitAll() }, [executive])
 
   const mode: ExportMode = executive ? 'executive' : 'engineering'
-  const dark = document.documentElement.classList.contains('dark')
+  const dark = theme.resolved === 'dark'
 
   const run = async (label: string, task: () => Promise<void>) => {
     setBusy(true)
@@ -111,7 +119,7 @@ export function PitchMode({ snapshot, estimate, onExit }: {
       await task()
       toast('success', `${label} exportado`)
     } catch (err) {
-      toast('error', (err as Error).message)
+      toast('error', errorMessage(err))
     } finally { setBusy(false) }
   }
 
@@ -126,7 +134,7 @@ export function PitchMode({ snapshot, estimate, onExit }: {
           selectedId={null}
           onSelect={() => {}}
           interactive={false}
-          onReady={(handle) => { canvas.current = handle; handle.fitAll() }}
+          onReady={(handle) => { canvas.current = handle; handle?.fitAll() }}
         />
 
         {/* Controles discretos, só visíveis ao aproximar o cursor. */}
@@ -194,5 +202,3 @@ export function PitchMode({ snapshot, estimate, onExit }: {
     </div>
   )
 }
-
-export { Presentation }

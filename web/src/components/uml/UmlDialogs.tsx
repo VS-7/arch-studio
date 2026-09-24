@@ -4,7 +4,10 @@ import { ArrowDownToLine, Copy } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { api } from '../../lib/api'
+import { errorMessage } from '../../lib/errors'
 import { mermaidErrorMessage, renderMermaid } from '../../lib/mermaid'
+import { platform } from '../../lib/platform'
+import { useTheme } from '../../lib/theme'
 import type { UMLDiagram, UMLKind } from '../../lib/types'
 import { KIND_META, UML_KINDS } from '../../lib/umlMeta'
 import { Button, Field, Input, Modal, Textarea, useToast } from '../ui'
@@ -31,7 +34,7 @@ export function NewDiagramDialog({ open, initialKind, onClose, onCreated }: {
       toast('success', `${KIND_META[kind].label} "${d.name}" criado`)
       onCreated(d)
       onClose()
-    } catch (err) { toast('error', (err as Error).message) } finally { setSaving(false) }
+    } catch (err) { toast('error', errorMessage(err)) } finally { setSaving(false) }
   }
 
   return (
@@ -86,7 +89,7 @@ export function RenameDiagramDialog({ diagram, onClose }: { diagram: UMLDiagram 
     try {
       await api.renameUML(diagram.id, { name: name.trim(), description })
       onClose()
-    } catch (err) { toast('error', (err as Error).message) }
+    } catch (err) { toast('error', errorMessage(err)) }
   }
 
   return (
@@ -107,6 +110,7 @@ export function RenameDiagramDialog({ diagram, onClose }: { diagram: UMLDiagram 
 
 export function UmlMermaidDialog({ diagram, onClose }: { diagram: UMLDiagram | null; onClose: () => void }) {
   const toast = useToast()
+  const dark = useTheme().resolved === 'dark'
   const [code, setCode] = useState('')
   // Estado (e não ref): o conteúdo do diálogo monta depois do efeito de abertura.
   const [preview, setPreview] = useState<HTMLDivElement | null>(null)
@@ -116,13 +120,12 @@ export function UmlMermaidDialog({ diagram, onClose }: { diagram: UMLDiagram | n
     let cancelled = false
     api.umlMermaid(diagram.id)
       .then((res) => { if (!cancelled) setCode(res.mermaid) })
-      .catch((err: unknown) => toast('error', (err as Error).message))
+      .catch((err: unknown) => toast('error', errorMessage(err)))
     return () => { cancelled = true }
   }, [diagram, toast])
 
   useEffect(() => {
     if (!code || !preview) return
-    const dark = document.documentElement.classList.contains('dark')
     let cancelled = false
     void (async () => {
       try {
@@ -133,23 +136,17 @@ export function UmlMermaidDialog({ diagram, onClose }: { diagram: UMLDiagram | n
       }
     })()
     return () => { cancelled = true }
-  }, [code, preview])
+  }, [code, preview, dark])
 
   const download = () => {
-    if (!diagram) return
-    const url = URL.createObjectURL(new Blob([code], { type: 'text/plain' }))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${diagram.id}.mermaid`
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 2000)
+    if (diagram) void platform.saveFile(new Blob([code], { type: 'text/plain' }), `${diagram.id}.mermaid`)
   }
 
   return (
     <Modal open={!!diagram} onClose={onClose} wide title={`Mermaid — ${diagram?.name ?? ''}`}
       description="Espelho textual regenerado a cada gravação; cole em READMEs, PRs ou no contexto de uma IA."
       footer={<>
-        <Button variant="ghost" icon={Copy} onClick={() => { void navigator.clipboard.writeText(code); toast('success', 'Mermaid copiado') }}>Copiar</Button>
+        <Button variant="ghost" icon={Copy} onClick={() => { void platform.copyText(code).then(() => toast('success', 'Mermaid copiado')) }}>Copiar</Button>
         <Button variant="secondary" icon={ArrowDownToLine} onClick={download}>Baixar .mermaid</Button>
       </>}>
       <div className="space-y-3">

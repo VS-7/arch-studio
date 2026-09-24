@@ -1,25 +1,17 @@
 import { ReactFlowProvider } from '@xyflow/react'
-import {
-  AlertTriangle, Bot, CheckCircle2, ClipboardPaste, Copy, CopyPlus, Info, Moon, PanelLeft, PanelLeftClose,
-  PanelRight, Play, Plug, Presentation, Redo2, Sun, Terminal, Trash2, Undo2, Waypoints, X,
-} from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { AlertTriangle, PanelLeftClose } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { api } from './lib/api'
+import { errorMessage } from './lib/errors'
 import { useHistory } from './lib/history'
-import { relativeTime } from './lib/format'
 import { ProjectProvider, useProject } from './lib/project'
-import { useStored } from './lib/storage'
-import { normalizeTabKey, parseTabKey, tabKey, VIEW_LABEL, type TabRef, type ViewId } from './lib/tabs'
-import { ThemeProvider, useTheme } from './lib/theme'
+import { VIEW_LABEL, type TabRef } from './lib/tabs'
+import { ThemeProvider } from './lib/theme'
 import { SELECT_TOOL, type Selection, type Tool } from './lib/tools'
-import type { Estimate, ServerEvent, Snapshot, UMLDiagram, UMLKind } from './lib/types'
-import { ELEMENT_LABEL, KIND_META } from './lib/umlMeta'
+import type { ServerEvent, UMLDiagram } from './lib/types'
 import { ApiView } from './components/api/ApiView'
 import { ArchCanvas, type CanvasHandle } from './components/canvas/ArchCanvas'
-import type { CanvasCommands } from './components/canvas/CanvasMenu'
-import { Inspector } from './components/canvas/Inspector'
-import { MermaidPanel } from './components/canvas/MermaidPanel'
 import { AdrPanel } from './components/docs/AdrPanel'
 import { AiPrdView, ProposalView } from './components/docs/GeneratedDocs'
 import { DocumentPanel } from './components/docs/reqdoc/DocumentPanel'
@@ -27,21 +19,28 @@ import { RequirementsPanel } from './components/docs/RequirementsPanel'
 import { UseCasesPanel } from './components/docs/UseCasesPanel'
 import { PitchMode } from './components/pitch/PitchMode'
 import { PricingView } from './components/pricing/PricingView'
-import { AppMenubar, type MenuActions } from './components/shell/AppMenubar'
+import type { MenuActions } from './components/shell/AppMenubar'
+import { useDesktopProjects, WelcomeScreen } from './components/shell/DesktopProjects'
+import { ShellDialogs, type ShellDialog } from './components/shell/dialogs/ShellDialogs'
+import { EditorPanel } from './components/shell/EditorPanel'
 import { ModelExplorer } from './components/shell/ModelExplorer'
 import { PanelHeader, SectionHeader, Splitter } from './components/shell/panels'
+import { StatusBar } from './components/shell/StatusBar'
+import { TabStrip } from './components/shell/TabStrip'
+import { TitleBar } from './components/shell/TitleBar'
 import { Toolbox, type ToolboxContext } from './components/shell/Toolbox'
-import { VIEW_ICON } from './components/shell/viewMeta'
+import { useEditCommands } from './components/shell/useEditCommands'
+import { useShortcuts } from './components/shell/useShortcuts'
+import {
+  EXPLORER_DEFAULT, LEFT_DEFAULT, LEFT_MIN, RIGHT_DEFAULT, RIGHT_MIN, useWorkspaceLayout,
+} from './components/shell/useWorkspaceLayout'
+import { useWorkspaceTabs } from './components/shell/useWorkspaceTabs'
 import { TasksView } from './components/tasks/TasksView'
-import { Badge, Button, IconAction, Modal, Spinner, Tip, ToastProvider, useToast } from './components/ui'
-import { Button as UIButton } from './components/ui/button'
+import { Button, IconAction, Spinner, ToastProvider, useToast } from './components/ui'
 import { ConfirmProvider, useConfirm } from './components/ui/confirm'
 import { ErrorBoundary } from './components/ui/error-boundary'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip'
+import { TooltipProvider } from './components/ui/tooltip'
 import { UmlCanvas, type UmlCanvasHandle } from './components/uml/UmlCanvas'
-import { NewDiagramDialog, RenameDiagramDialog, UmlMermaidDialog } from './components/uml/UmlDialogs'
-import { KindGlyph } from './components/uml/UmlGlyph'
-import { UmlInspector } from './components/uml/UmlInspector'
 
 export default function App() {
   return (
@@ -78,34 +77,6 @@ function AppWithEvents() {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Layout dos painéis (preferências por navegador)                              */
-/* -------------------------------------------------------------------------- */
-
-const LEFT_DEFAULT = 220
-const LEFT_MIN = 160
-const RIGHT_DEFAULT = 310
-const RIGHT_MIN = 220
-const EXPLORER_DEFAULT = 0.45
-
-type SideSection = 'explorer' | 'editor'
-/** Seções da barra lateral direita: abertas/recolhidas e qual está maximizada. */
-type SideSections = { explorer: boolean; editor: boolean; max: SideSection | null }
-const SECTIONS_DEFAULT: SideSections = { explorer: true, editor: true, max: null }
-
-const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
-
-/** Largura da janela, para limitar os painéis laterais em telas menores. */
-function useViewportWidth(): number {
-  const [width, setWidth] = useState(() => window.innerWidth)
-  useEffect(() => {
-    const onResize = () => setWidth(window.innerWidth)
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-  return width
-}
-
-/* -------------------------------------------------------------------------- */
 /* Shell                                                                       */
 /* -------------------------------------------------------------------------- */
 
@@ -113,17 +84,13 @@ function Shell() {
   const { snapshot, lint, loading, error, connected, highlight, lastEvent, refresh } = useProject()
   const toast = useToast()
   const confirm = useConfirm()
-  const theme = useTheme()
   const history = useHistory(snapshot)
+  const layout = useWorkspaceLayout()
+  const projects = useDesktopProjects()
 
-  const [tabKeys, setTabKeys] = useStored<string[]>('archcode-tabs', ['arch'])
-  const [activeKey, setActiveKey] = useStored<string>('archcode-active-tab', 'arch')
-  const [panels, setPanels] = useStored('archcode-panels', { left: true, right: true })
-  const [leftWidth, setLeftWidth] = useStored('archcode-left-width', LEFT_DEFAULT)
-  const [rightWidth, setRightWidth] = useStored('archcode-right-width', RIGHT_DEFAULT)
-  const [explorerRatio, setExplorerRatio] = useStored('archcode-explorer-ratio', EXPLORER_DEFAULT)
-  const [sections, setSections] = useStored<SideSections>('archcode-side-sections', SECTIONS_DEFAULT)
-  const viewport = useViewportWidth()
+  const diagrams = useMemo(() => snapshot?.uml_diagrams ?? [], [snapshot?.uml_diagrams])
+  const workspace = useWorkspaceTabs(diagrams)
+  const { active, activeKey, activeDiagram, open: openWorkspaceTab, close: closeTab } = workspace
 
   const [tool, setTool] = useState<Tool>(SELECT_TOOL)
   const [selection, setSelection] = useState<Selection>(null)
@@ -135,61 +102,21 @@ function Shell() {
   const [zoom, setZoom] = useState(1)
   // Ficha de caso de uso a abrir para edição ao entrar na aba Casos de Uso.
   const [useCaseFocus, setUseCaseFocus] = useState<{ code: string; at: number } | null>(null)
-
-  const [archMermaidOpen, setArchMermaidOpen] = useState(false)
-  const [lintOpen, setLintOpen] = useState(false)
-  const [mcpOpen, setMcpOpen] = useState(false)
-  const [shortcutsOpen, setShortcutsOpen] = useState(false)
-  const [aboutOpen, setAboutOpen] = useState(false)
-  const [newDiagram, setNewDiagram] = useState<UMLKind | null>(null)
-  const [renaming, setRenaming] = useState<UMLDiagram | null>(null)
-  const [mermaidOf, setMermaidOf] = useState<UMLDiagram | null>(null)
+  const [dialog, setDialog] = useState<ShellDialog | null>(null)
 
   const [archHandle, setArchHandle] = useState<CanvasHandle | null>(null)
   const [umlHandle, setUmlHandle] = useState<UmlCanvasHandle | null>(null)
   const [generating, setGenerating] = useState(false)
-  const [estimate, setEstimate] = useState<Estimate | null>(null)
   const rightPanel = useRef<HTMLDivElement>(null)
 
-  const diagrams = useMemo(() => snapshot?.uml_diagrams ?? [], [snapshot?.uml_diagrams])
-
-  // Abas gravadas por versões anteriores (ex.: "view:docs", a antiga aba única de
-  // Documentação) são convertidas uma vez para o formato atual.
-  useEffect(() => {
-    const keys = [...new Set(tabKeys.map(normalizeTabKey).filter((k): k is string => !!k))]
-    if (keys.join('|') !== tabKeys.join('|')) setTabKeys(keys)
-    const active = normalizeTabKey(activeKey) ?? keys[0] ?? ''
-    if (active !== activeKey) setActiveKey(active)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Abas cujo diagrama deixou de existir (excluído por IA ou no disco) somem.
-  const tabs = useMemo(() => tabKeys
-    .map(parseTabKey)
-    .filter((t): t is TabRef => !!t && (t.type !== 'uml' || diagrams.some((d) => d.id === t.id))),
-  [tabKeys, diagrams])
-  const active = tabs.find((t) => tabKey(t) === activeKey) ?? tabs[0] ?? null
-  const activeDiagram = active?.type === 'uml' ? diagrams.find((d) => d.id === active.id) ?? null : null
-
-  // A estimativa alimenta o sumário do Modo Pitch.
-  useEffect(() => {
-    if (!snapshot) return
-    api.estimate().then(setEstimate).catch(() => setEstimate(null))
-  }, [snapshot?.diagram.last_modified, snapshot?.use_cases.length, snapshot?.pricing])
+  const edit = useEditCommands({
+    history, active, activeDiagram, archHandle, umlHandle, onRemoved: () => setSelection(null),
+  })
 
   const openTab = useCallback((tab: TabRef) => {
-    const key = tabKey(tab)
-    if (!tabKeys.includes(key)) setTabKeys([...tabKeys, key])
-    setActiveKey(key)
+    openWorkspaceTab(tab)
     setTool(SELECT_TOOL)
-  }, [setActiveKey, setTabKeys, tabKeys])
-
-  const closeTab = useCallback((key: string) => {
-    const idx = tabKeys.indexOf(key)
-    const next = tabKeys.filter((k) => k !== key)
-    setTabKeys(next)
-    if (activeKey === key) setActiveKey(next[Math.max(0, idx - 1)] ?? '')
-  }, [activeKey, setActiveKey, setTabKeys, tabKeys])
+  }, [openWorkspaceTab])
 
   // Trocar de aba limpa a seleção e a ferramenta (e o pedido de abrir uma ficha).
   useEffect(() => {
@@ -205,7 +132,7 @@ function Shell() {
       const res = await api.generatePRD({ include_test_scenarios: true, granularity: 'detailed' })
       toast('success', `AI-PRD gerado: ${res.total_tasks} tarefas (hash ${res.hash})`)
       await refresh({ silent: true })
-    } catch (err) { toast('error', (err as Error).message) } finally { setGenerating(false) }
+    } catch (err) { toast('error', errorMessage(err)) } finally { setGenerating(false) }
   }, [refresh, toast])
 
   const autoLayout = useCallback(async () => {
@@ -213,7 +140,7 @@ function Shell() {
       await api.autoLayout()
       toast('success', 'Layout reorganizado', { label: 'Desfazer', onClick: () => void history.undo('arch') })
       setTimeout(() => archHandle?.fitAll(), 250)
-    } catch (err) { toast('error', (err as Error).message) }
+    } catch (err) { toast('error', errorMessage(err)) }
   }, [archHandle, history, toast])
 
   const generateUseCases = useCallback(async () => {
@@ -222,7 +149,7 @@ function Shell() {
       toast('success', `Diagrama "${d.name}" sincronizado com as fichas de caso de uso`)
       await refresh({ silent: true })
       openTab({ type: 'uml', id: d.id })
-    } catch (err) { toast('error', (err as Error).message) }
+    } catch (err) { toast('error', errorMessage(err)) }
   }, [openTab, refresh, toast])
 
   const deleteDiagram = useCallback(async (d: UMLDiagram) => {
@@ -236,39 +163,10 @@ function Shell() {
       await api.deleteUML(d.id)
       closeTab(`uml:${d.id}`)
       toast('success', `Diagrama "${d.name}" excluído`)
-    } catch (err) { toast('error', (err as Error).message) }
+    } catch (err) { toast('error', errorMessage(err)) }
   }, [closeTab, confirm, toast])
 
-  /* Edição: desfazer/refazer e comandos do canvas ativo -------------------------- */
-
-  // Chave de histórico e comandos do diagrama aberto (arquitetura ou UML).
-  const historyKey = active?.type === 'arch' ? 'arch' : activeDiagram ? `uml:${activeDiagram.id}` : null
-  const commands: CanvasCommands | null = active?.type === 'arch' ? archHandle : activeDiagram ? umlHandle : null
-
-  const undo = useCallback(async () => {
-    if (!historyKey) return
-    if (!history.canUndo(historyKey)) { toast('info', 'Nada para desfazer'); return }
-    try { await history.undo(historyKey) } catch (err) { toast('error', `Não foi possível desfazer: ${(err as Error).message}`) }
-  }, [history, historyKey, toast])
-
-  const redo = useCallback(async () => {
-    if (!historyKey) return
-    if (!history.canRedo(historyKey)) { toast('info', 'Nada para refazer'); return }
-    try { await history.redo(historyKey) } catch (err) { toast('error', `Não foi possível refazer: ${(err as Error).message}`) }
-  }, [history, historyKey, toast])
-
-  /** Executa um comando do canvas e anuncia o resultado; mudanças oferecem "Desfazer". */
-  const runCommand = useCallback(async (name: keyof Pick<CanvasCommands, 'deleteSelected' | 'copy' | 'cut' | 'paste' | 'duplicate'>) => {
-    if (!commands || !historyKey) return
-    const key = historyKey
-    try {
-      const msg = await commands[name]()
-      if (!msg) return
-      if (name === 'copy') toast('info', msg)
-      else toast('success', msg, { label: 'Desfazer', onClick: () => void history.undo(key) })
-      if (name === 'deleteSelected' || name === 'cut') setSelection(null)
-    } catch (err) { toast('error', (err as Error).message) }
-  }, [commands, history, historyKey, toast])
+  /* Navegação ---------------------------------------------------------------- */
 
   const selectUmlElement = useCallback((diagramId: string, elementId: string) => {
     openTab({ type: 'uml', id: diagramId })
@@ -297,45 +195,58 @@ function Shell() {
     if (selection?.scope === 'uml' && selection.kind === 'element' && umlHandle && focusName === 0) umlHandle.focus(selection.id)
   }, [selection, umlHandle, focusName])
 
-  /* Atalhos de teclado ------------------------------------------------------- */
+  /* Menus e atalhos ------------------------------------------------------------ */
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement
-      const historyKeyCombo = (e.ctrlKey || e.metaKey) && ['z', 'y'].includes(e.key.toLowerCase())
-      // Campo recém-focado e ainda não editado (ex.: nome do elemento criado) não
-      // "segura" o Ctrl+Z: o usuário espera desfazer a criação.
-      const pristine = historyKeyCombo && target.dataset.pristine === 'true'
-      const typing = !pristine && target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')
-      if (e.key === 'Escape' && !typing) { setTool(SELECT_TOOL); return }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); setPanels({ ...panels, left: !panels.left }); return }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') { e.preventDefault(); setPanels({ ...panels, right: !panels.right }); return }
-      if (typing) return
-      const mod = e.ctrlKey || e.metaKey
-      const k = e.key.toLowerCase()
-      if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); void undo(); return }
-      if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); void redo(); return }
-      if (!commands) return
-      if (mod && k === 'c') { e.preventDefault(); void runCommand('copy'); return }
-      if (mod && k === 'x') { e.preventDefault(); void runCommand('cut'); return }
-      if (mod && k === 'v') { e.preventDefault(); void runCommand('paste'); return }
-      if (mod && k === 'd') { e.preventDefault(); void runCommand('duplicate'); return }
-      if (mod && k === 'a') { e.preventDefault(); commands.selectAll(); return }
-      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); void runCommand('deleteSelected'); return }
-      if (e.key === 'F2' && selection?.scope === 'uml' && selection.kind === 'element') { e.preventDefault(); setFocusName(Date.now()); return }
-      if (e.shiftKey && e.code === 'Digit1') { commands.fitAll(); return }
-      if (!mod && (e.key === '+' || e.key === '=')) commands.zoomIn()
-      if (!mod && e.key === '-') commands.zoomOut()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [commands, panels, redo, runCommand, selection, setPanels, undo])
+  const archActive = active?.type === 'arch'
+  const commands = edit.commands
+  const actions: MenuActions = {
+    newDiagram: (kind) => setDialog({ type: 'newDiagram', kind }),
+    generateUseCases: () => void generateUseCases(),
+    exportImage: activeDiagram && umlHandle ? (format) => void umlHandle.exportImage(format) : null,
+    exportMermaid: activeDiagram ? () => setDialog({ type: 'umlMermaid', diagram: activeDiagram })
+      : archActive ? () => setDialog({ type: 'archMermaid' }) : null,
+    generatePRD: () => void generatePRD(),
+    undo: edit.canUndo ? () => void edit.undo() : null,
+    redo: edit.canRedo ? () => void edit.redo() : null,
+    cut: commands ? () => void edit.run('cut') : null,
+    copy: commands ? () => void edit.run('copy') : null,
+    paste: commands ? () => void edit.run('paste') : null,
+    duplicate: commands ? () => void edit.run('duplicate') : null,
+    selectAll: commands ? commands.selectAll : null,
+    deleteSelection: commands ? () => void edit.run('deleteSelected') : null,
+    fit: commands?.fitAll ?? null,
+    zoomIn: commands?.zoomIn ?? null,
+    zoomOut: commands?.zoomOut ?? null,
+    autoLayout: () => { openTab({ type: 'arch' }); void autoLayout() },
+    importMermaid: () => setDialog({ type: 'archMermaid' }),
+    validate: () => setDialog({ type: 'lint' }),
+    mcp: () => setDialog({ type: 'mcp' }),
+    pitch: () => setPitch(true),
+    shortcuts: () => setDialog({ type: 'shortcuts' }),
+    about: () => setDialog({ type: 'about' }),
+    openView: (view) => openTab({ type: 'view', view }),
+    resetLayout: layout.resetLayout,
+    project: projects.actions,
+  }
+
+  // Desligados no Modo Pitch: o canvas da apresentação não é o do Shell.
+  useShortcuts({
+    actions,
+    undo: () => void edit.undo(),
+    redo: () => void edit.redo(),
+    toggleLeft: () => layout.togglePanel('left'),
+    toggleRight: () => layout.togglePanel('right'),
+    cancelTool: () => setTool(SELECT_TOOL),
+    rename: commands && selection?.scope === 'uml' && selection.kind === 'element' ? () => setFocusName(Date.now()) : null,
+  }, { enabled: !pitch })
 
   /* Estados de carregamento ---------------------------------------------------- */
 
   if (loading && !snapshot) return <div className="grid h-full place-items-center"><Spinner label="Carregando projeto…" /></div>
 
   if (error && !snapshot) {
+    // App desktop sem projeto (ou com a pasta indisponível): tela inicial.
+    if (projects.actions) return <>{<WelcomeScreen actions={projects.actions} error={error} />}{projects.dialog}</>
     return (
       <div className="grid h-full place-items-center px-6">
         <div className="max-w-md text-center">
@@ -350,113 +261,30 @@ function Shell() {
   }
   if (!snapshot) return null
 
-  if (pitch) return <PitchMode snapshot={snapshot} estimate={estimate} onExit={() => setPitch(false)} />
+  if (pitch) return <PitchMode snapshot={snapshot} onExit={() => setPitch(false)} />
 
-  const archActive = active?.type === 'arch'
-
-  // Larguras limitadas pela janela: a área central nunca fica espremida.
-  const leftMax = Math.max(LEFT_MIN, Math.min(520, viewport * 0.35))
-  const rightMax = Math.max(RIGHT_MIN, Math.min(760, viewport * 0.5))
-  const leftW = clamp(leftWidth, LEFT_MIN, leftMax)
-  const rightW = clamp(rightWidth, RIGHT_MIN, rightMax)
-
-  // Com uma seção maximizada, a outra mostra só o cabeçalho.
-  const explorerOpen = sections.max ? sections.max === 'explorer' : sections.explorer
-  const editorOpen = sections.max ? sections.max === 'editor' : sections.editor
-  const toggleSection = (section: SideSection) => {
-    if (!sections.max) setSections({ ...sections, [section]: !sections[section] })
-    // Recolher a seção maximizada devolve o espaço à outra; expandir a outra restaura as duas.
-    else if (sections.max === section) setSections({ explorer: section !== 'explorer', editor: section !== 'editor', max: null })
-    else setSections(SECTIONS_DEFAULT)
-  }
-  const maximizeSection = (section: SideSection) => {
-    setSections(sections.max === section ? { ...sections, max: null } : { ...sections, [section]: true, max: section })
-  }
-  /** Garante o Editor visível (ex.: F2 / duplo clique para renomear). */
-  const revealEditor = () => {
-    if (!panels.right) setPanels({ ...panels, right: true })
-    if (!editorOpen) setSections({ ...sections, editor: true, max: sections.max === 'explorer' ? null : sections.max })
-  }
+  const { panels, explorerOpen, editorOpen } = layout
   const toolboxContext: ToolboxContext = archActive ? { type: 'arch' } : activeDiagram ? { type: 'uml', kind: activeDiagram.kind } : null
-
-  const actions: MenuActions = {
-    newDiagram: (kind) => setNewDiagram(kind),
-    generateUseCases: () => void generateUseCases(),
-    exportImage: activeDiagram && umlHandle ? (format) => void umlHandle.exportImage(format) : null,
-    exportMermaid: activeDiagram ? () => setMermaidOf(activeDiagram) : archActive ? () => setArchMermaidOpen(true) : null,
-    generatePRD: () => void generatePRD(),
-    undo: historyKey && history.canUndo(historyKey) ? () => void undo() : null,
-    redo: historyKey && history.canRedo(historyKey) ? () => void redo() : null,
-    cut: commands ? () => void runCommand('cut') : null,
-    copy: commands ? () => void runCommand('copy') : null,
-    paste: commands ? () => void runCommand('paste') : null,
-    duplicate: commands ? () => void runCommand('duplicate') : null,
-    selectAll: commands ? commands.selectAll : null,
-    deleteSelection: commands ? () => void runCommand('deleteSelected') : null,
-    fit: commands?.fitAll ?? null,
-    zoomIn: commands?.zoomIn ?? null,
-    zoomOut: commands?.zoomOut ?? null,
-    autoLayout: () => { openTab({ type: 'arch' }); void autoLayout() },
-    importMermaid: () => setArchMermaidOpen(true),
-    validate: () => setLintOpen(true),
-    mcp: () => setMcpOpen(true),
-    pitch: () => setPitch(true),
-    shortcuts: () => setShortcutsOpen(true),
-    about: () => setAboutOpen(true),
-    openView: (view) => openTab({ type: 'view', view }),
-    resetLayout: () => {
-      setPanels({ left: true, right: true })
-      setLeftWidth(LEFT_DEFAULT)
-      setRightWidth(RIGHT_DEFAULT)
-      setExplorerRatio(EXPLORER_DEFAULT)
-      setSections(SECTIONS_DEFAULT)
-    },
-  }
 
   const statusPath = archActive ? '.arch/diagrams/macro.json'
     : activeDiagram ? activeDiagram.file ?? `.arch/diagrams/${activeDiagram.kind}/${activeDiagram.id}.json`
       : active?.type === 'view' ? VIEW_LABEL[active.view] : ''
+  const statusCounts = activeDiagram ? `${activeDiagram.elements.length} elementos · ${activeDiagram.relations.length} relações`
+    : archActive ? `${snapshot.diagram.nodes.length} componentes · ${snapshot.diagram.edges.length} conexões` : null
 
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
-      {/* Barra de título + menus ------------------------------------------------ */}
-      <header className="flex h-9 shrink-0 items-center gap-2 border-b bg-chrome px-2">
-        <span className="flex size-6 items-center justify-center rounded-sm border bg-background text-foreground">
-          <Waypoints size={14} />
-        </span>
-        <AppMenubar actions={actions} theme={theme.preference} onTheme={theme.setPreference}
-          panels={panels} onPanels={setPanels} executive={executive} onExecutive={setExecutive} archActive={archActive} />
-
-        <div className="mx-auto hidden min-w-0 items-center gap-1.5 truncate text-[12px] text-muted-foreground lg:flex">
-          <span className="truncate font-medium text-foreground">{snapshot.manifest.project_name}</span>
-          <span>· v{snapshot.manifest.version}</span>
-        </div>
-
-        <div className="ml-auto flex items-center gap-1">
-          <IconButton label="Desfazer (Ctrl+Z)" onClick={() => void undo()} disabled={!historyKey || !history.canUndo(historyKey)}><Undo2 /></IconButton>
-          <IconButton label="Refazer (Ctrl+Y)" onClick={() => void redo()} disabled={!historyKey || !history.canRedo(historyKey)}><Redo2 /></IconButton>
-          <div className="mx-1 h-4 w-px bg-border" />
-          <IconButton label={panels.left ? 'Ocultar Toolbox (Ctrl+B)' : 'Mostrar Toolbox (Ctrl+B)'} active={panels.left}
-            onClick={() => setPanels({ ...panels, left: !panels.left })}><PanelLeft /></IconButton>
-          <IconButton label={panels.right ? 'Ocultar painéis (Ctrl+J)' : 'Mostrar painéis (Ctrl+J)'} active={panels.right}
-            onClick={() => setPanels({ ...panels, right: !panels.right })}><PanelRight /></IconButton>
-          <IconButton label="Conectar agente de IA (MCP)" onClick={() => setMcpOpen(true)}><Plug /></IconButton>
-          <IconButton label={theme.resolved === 'dark' ? 'Tema claro' : 'Tema escuro'} onClick={theme.toggle}>
-            {theme.resolved === 'dark' ? <Sun /> : <Moon />}
-          </IconButton>
-          <div className="mx-1 h-4 w-px bg-border" />
-          <Button size="sm" variant="secondary" icon={Presentation} onClick={() => setPitch(true)}>Pitch</Button>
-          <Button size="sm" variant="primary" icon={Bot} loading={generating} onClick={() => void generatePRD()}>Gerar AI-PRD</Button>
-        </div>
-      </header>
+      <TitleBar actions={actions} projectName={snapshot.manifest.project_name} version={snapshot.manifest.version}
+        panels={panels} onPanels={layout.setPanels} executive={executive} onExecutive={setExecutive}
+        archActive={archActive} generating={generating} />
 
       {/* Área de trabalho ------------------------------------------------------- */}
       <div className="flex min-h-0 flex-1">
         {panels.left && (
           <>
-            <aside className="flex shrink-0 flex-col bg-chrome" style={{ width: leftW }}>
+            <aside className="flex shrink-0 flex-col bg-chrome" style={{ width: layout.left.width }}>
               <PanelHeader title="Toolbox">
-                <IconAction label="Ocultar Toolbox (Ctrl+B)" onClick={() => setPanels({ ...panels, left: false })}>
+                <IconAction label="Ocultar Toolbox (Ctrl+B)" onClick={() => layout.setPanels({ ...panels, left: false })}>
                   <PanelLeftClose size={13} />
                 </IconAction>
               </PanelHeader>
@@ -464,13 +292,13 @@ function Shell() {
                 <Toolbox context={toolboxContext} tool={tool} onTool={setTool} />
               </div>
             </aside>
-            <Splitter axis="x" label="Redimensionar Toolbox" value={leftW} min={LEFT_MIN} max={leftMax}
-              onChange={setLeftWidth} onReset={() => setLeftWidth(LEFT_DEFAULT)} />
+            <Splitter axis="x" label="Redimensionar Toolbox" value={layout.left.width} min={LEFT_MIN} max={layout.left.max}
+              onChange={layout.left.setWidth} onReset={() => layout.left.setWidth(LEFT_DEFAULT)} />
           </>
         )}
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <TabStrip tabs={tabs} active={active} diagrams={diagrams} onActivate={(t) => setActiveKey(tabKey(t))} onClose={closeTab} />
+          <TabStrip tabs={workspace.tabs} active={active} diagrams={diagrams} onActivate={workspace.activate} onClose={closeTab} />
           <div className="relative min-h-0 flex-1">
             <ErrorBoundary key={activeKey} area={active?.type === 'view' ? VIEW_LABEL[active.view] : activeDiagram?.name ?? 'Arquitetura'}>
             {!active && (
@@ -505,7 +333,7 @@ function Shell() {
                 onRename={(id) => {
                   setSelection({ scope: 'uml', diagramId: activeDiagram.id, kind: 'element', id })
                   setFocusName(Date.now())
-                  revealEditor()
+                  layout.revealEditor()
                 }}
                 onReady={setUmlHandle}
                 onZoom={setZoom}
@@ -533,13 +361,13 @@ function Shell() {
 
         {panels.right && (
           <>
-            <Splitter axis="x" invert label="Redimensionar Model Explorer e Editor" value={rightW} min={RIGHT_MIN} max={rightMax}
-              onChange={setRightWidth} onReset={() => setRightWidth(RIGHT_DEFAULT)} />
-            <aside ref={rightPanel} className="flex shrink-0 flex-col bg-chrome" style={{ width: rightW }}>
+            <Splitter axis="x" invert label="Redimensionar Model Explorer e Editor" value={layout.right.width} min={RIGHT_MIN} max={layout.right.max}
+              onChange={layout.right.setWidth} onReset={() => layout.right.setWidth(RIGHT_DEFAULT)} />
+            <aside ref={rightPanel} className="flex shrink-0 flex-col bg-chrome" style={{ width: layout.right.width }}>
               <div className={cn('flex min-h-0 flex-col', explorerOpen && !editorOpen && 'flex-1')}
-                style={explorerOpen && editorOpen ? { height: `${explorerRatio * 100}%` } : undefined}>
-                <SectionHeader title="Model Explorer" open={explorerOpen} maximized={sections.max === 'explorer'}
-                  onToggle={() => toggleSection('explorer')} onMaximize={() => maximizeSection('explorer')} />
+                style={explorerOpen && editorOpen ? { height: `${layout.explorerRatio * 100}%` } : undefined}>
+                <SectionHeader title="Model Explorer" open={explorerOpen} maximized={layout.maximized === 'explorer'}
+                  onToggle={() => layout.toggleSection('explorer')} onMaximize={() => layout.maximizeSection('explorer')} />
                 {explorerOpen && (
                   <div className="min-h-0 flex-1 bg-background">
                     <ModelExplorer
@@ -549,10 +377,10 @@ function Shell() {
                       onOpen={openTab}
                       onSelectElement={selectUmlElement}
                       onSelectArchNode={selectArchNode}
-                      onCreateDiagram={(kind) => setNewDiagram(kind)}
-                      onRenameDiagram={setRenaming}
+                      onCreateDiagram={(kind) => setDialog({ type: 'newDiagram', kind })}
+                      onRenameDiagram={(diagram) => setDialog({ type: 'renameDiagram', diagram })}
                       onDeleteDiagram={(d) => void deleteDiagram(d)}
-                      onShowMermaid={setMermaidOf}
+                      onShowMermaid={(diagram) => setDialog({ type: 'umlMermaid', diagram })}
                       onGenerateUseCases={() => void generateUseCases()}
                     />
                   </div>
@@ -560,13 +388,13 @@ function Shell() {
               </div>
               {explorerOpen && editorOpen && (
                 <Splitter axis="y" label="Redimensionar a altura do Model Explorer e do Editor"
-                  value={explorerRatio} min={0.12} max={0.88}
+                  value={layout.explorerRatio} min={0.12} max={0.88}
                   scale={() => 1 / (rightPanel.current?.clientHeight || 800)}
-                  onChange={setExplorerRatio} onReset={() => setExplorerRatio(EXPLORER_DEFAULT)} />
+                  onChange={layout.setExplorerRatio} onReset={() => layout.setExplorerRatio(EXPLORER_DEFAULT)} />
               )}
               <div className={cn('flex min-h-0 flex-col', editorOpen && 'flex-1', explorerOpen && !editorOpen && 'border-t')}>
-                <SectionHeader title="Editor" open={editorOpen} maximized={sections.max === 'editor'}
-                  onToggle={() => toggleSection('editor')} onMaximize={() => maximizeSection('editor')} />
+                <SectionHeader title="Editor" open={editorOpen} maximized={layout.maximized === 'editor'}
+                  onToggle={() => layout.toggleSection('editor')} onMaximize={() => layout.maximizeSection('editor')} />
                 {editorOpen && (
                   <div className="min-h-0 flex-1 overflow-y-auto bg-background">
                     <ErrorBoundary key={`${activeKey}|${selection?.id ?? ''}`} area="Editor">
@@ -577,12 +405,12 @@ function Shell() {
                       selection={selection}
                       focusName={focusName}
                       multiCount={multiCount}
-                      onCommand={(name) => void runCommand(name)}
+                      onCommand={(name) => void edit.run(name)}
                       onClose={() => setSelection(null)}
                       onFocusArch={(id) => selectArchNode(id)}
                       onOpenUseCase={openUseCase}
-                      onRename={setRenaming}
-                      onMermaid={setMermaidOf}
+                      onRename={(diagram) => setDialog({ type: 'renameDiagram', diagram })}
+                      onMermaid={(diagram) => setDialog({ type: 'umlMermaid', diagram })}
                       onExport={(f) => void umlHandle?.exportImage(f)}
                       archFocus={(id) => archHandle?.focusNode(id)}
                     />
@@ -595,349 +423,14 @@ function Shell() {
         )}
       </div>
 
-      {/* Barra de status ------------------------------------------------------------ */}
-      <footer className="flex h-6 shrink-0 items-center gap-3 bg-statusbar px-2.5 text-[11.5px] text-statusbar-foreground">
-        <Tip label={connected ? 'Sincronização em tempo real ativa' : 'Reconectando ao servidor…'} side="top">
-          <span className="flex items-center gap-1.5">
-            <span className={cn('size-1.5 rounded-full', connected ? 'bg-success' : 'animate-pulse bg-warning')} />
-            {connected ? 'Sincronizado' : 'Reconectando…'}
-          </span>
-        </Tip>
-        {statusPath && <span className="truncate font-mono opacity-90">{statusPath}</span>}
-        {activeDiagram && (
-          <span className="opacity-90">{activeDiagram.elements.length} elementos · {activeDiagram.relations.length} relações</span>
-        )}
-        {archActive && (
-          <span className="opacity-90">{snapshot.diagram.nodes.length} componentes · {snapshot.diagram.edges.length} conexões</span>
-        )}
-        {tool.mode !== 'select' && <span className="rounded-sm bg-accent px-1.5">Ferramenta ativa · Esc cancela</span>}
-        <div className="ml-auto flex items-center gap-3">
-          {lastEvent?.at && <span className="hidden opacity-80 md:inline">última alteração {relativeTime(lastEvent.at)}</span>}
-          {lint && (
-            <Tip label="Relatório de validação da arquitetura" side="top">
-            <button onClick={() => setLintOpen(true)} className="flex items-center gap-1 rounded-sm px-1 hover:bg-accent">
-              {lint.errors > 0 || lint.warnings > 0 ? <AlertTriangle size={12} /> : <CheckCircle2 size={12} />}
-              Qualidade {lint.score}
-            </button>
-            </Tip>
-          )}
-          {(archActive || activeDiagram) && <span className="tabular-nums">{Math.round(zoom * 100)}%</span>}
-        </div>
-      </footer>
+      <StatusBar connected={connected} path={statusPath} counts={statusCounts} toolActive={tool.mode !== 'select'}
+        lastEvent={lastEvent} lint={lint} onLint={() => setDialog({ type: 'lint' })}
+        zoom={archActive || activeDiagram ? zoom : null} />
 
-      <MermaidPanel open={archMermaidOpen} onClose={() => setArchMermaidOpen(false)} snapshot={snapshot} />
-      <LintModal open={lintOpen} onClose={() => setLintOpen(false)} />
-      <McpModal open={mcpOpen} onClose={() => setMcpOpen(false)} />
-      <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
-      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} snapshot={snapshot} />
-      <NewDiagramDialog open={newDiagram !== null} initialKind={newDiagram ?? 'usecase'} onClose={() => setNewDiagram(null)}
-        onCreated={(d) => { void refresh({ silent: true }).then(() => openTab({ type: 'uml', id: d.id })) }} />
-      <RenameDiagramDialog diagram={renaming} onClose={() => setRenaming(null)} />
-      <UmlMermaidDialog diagram={mermaidOf} onClose={() => setMermaidOf(null)} />
+      {projects.dialog}
+
+      <ShellDialogs dialog={dialog} onClose={() => setDialog(null)} snapshot={snapshot}
+        onDiagramCreated={(d) => { void refresh({ silent: true }).then(() => openTab({ type: 'uml', id: d.id })) }} />
     </div>
-  )
-}
-
-function IconButton({ label, onClick, children, active, disabled }: {
-  label: string; onClick: () => void; children: ReactNode; active?: boolean; disabled?: boolean
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        {/* span: o tooltip continua funcionando com o botão desabilitado */}
-        <span className="inline-flex">
-        <UIButton size="icon-sm" variant="ghost" onClick={onClick} aria-label={label} disabled={disabled}
-          className={cn(active && 'text-foreground')}>
-          {children}
-        </UIButton>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  )
-}
-
-/* Abas de diagramas ---------------------------------------------------------- */
-
-function TabStrip({ tabs, active, diagrams, onActivate, onClose }: {
-  tabs: TabRef[]; active: TabRef | null; diagrams: UMLDiagram[]
-  onActivate: (t: TabRef) => void; onClose: (key: string) => void
-}) {
-  const activeKey = active ? tabKey(active) : ''
-  return (
-    <div className="flex h-8 shrink-0 items-end overflow-x-auto border-b bg-chrome-2">
-      {tabs.map((t) => {
-        const key = tabKey(t)
-        const d = t.type === 'uml' ? diagrams.find((x) => x.id === t.id) : undefined
-        const label = t.type === 'arch' ? 'Arquitetura' : t.type === 'uml' ? d?.name ?? t.id : VIEW_LABEL[t.view]
-        const isActive = key === activeKey
-        return (
-          <div key={key}
-            onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); onClose(key) } }}
-            onClick={() => onActivate(t)}
-            className={cn(
-              'group relative flex h-8 max-w-[220px] shrink-0 cursor-default items-center gap-1.5 border-r px-3 text-[12.5px]',
-              isActive ? 'bg-tab-active text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-            )}
-          >
-            {isActive && <span className="absolute inset-x-0 top-0 h-0.5 bg-foreground/70" />}
-            <span>
-              {t.type === 'uml' && d ? <KindGlyph kind={d.kind} size={13} />
-                : t.type === 'arch' ? <Waypoints size={13} />
-                  : t.type === 'view' ? <ViewIcon view={t.view} /> : null}
-            </span>
-            <span className="truncate">{label}</span>
-            <IconAction label="Fechar aba (clique do meio)"
-              onClick={(e) => { e.stopPropagation(); onClose(key) }}
-              className={cn('ml-0.5', isActive ? 'opacity-80' : 'opacity-0 group-hover:opacity-80')}>
-              <X size={12} />
-            </IconAction>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function ViewIcon({ view }: { view: ViewId }) {
-  const Icon = VIEW_ICON[view]
-  return <Icon size={13} />
-}
-
-/* Painel Editor (propriedades do que está selecionado) ------------------------------ */
-
-function EditorPanel({
-  snapshot, active, diagram, selection, focusName, multiCount, onCommand, onClose, onFocusArch, onOpenUseCase, onRename, onMermaid, onExport, archFocus,
-}: {
-  snapshot: Snapshot; active: TabRef | null; diagram: UMLDiagram | null; selection: Selection; focusName: number
-  multiCount: number; onCommand: (name: 'deleteSelected' | 'copy' | 'duplicate' | 'cut' | 'paste') => void
-  onClose: () => void; onFocusArch: (id: string) => void; onOpenUseCase: (code: string) => void
-  onRename: (d: UMLDiagram) => void; onMermaid: (d: UMLDiagram) => void; onExport: (f: 'png' | 'svg') => void
-  archFocus: (id: string) => void
-}) {
-  if (multiCount > 1 && (active?.type === 'arch' || diagram)) {
-    return (
-      <div className="space-y-3 p-3">
-        <p className="text-[13px] font-semibold">{multiCount} itens selecionados</p>
-        <p className="text-[12px] leading-relaxed text-muted-foreground">
-          Arraste para mover todos juntos. Use o clique direito para mais ações.
-        </p>
-        <div className="flex flex-wrap gap-1.5">
-          <Button size="sm" variant="secondary" icon={Copy} onClick={() => onCommand('copy')}>Copiar</Button>
-          <Button size="sm" variant="secondary" icon={CopyPlus} onClick={() => onCommand('duplicate')}>Duplicar</Button>
-          <Button size="sm" variant="secondary" icon={ClipboardPaste} onClick={() => onCommand('paste')}>Colar</Button>
-          <Button size="sm" variant="danger" icon={Trash2} onClick={() => onCommand('deleteSelected')}>Excluir</Button>
-        </div>
-      </div>
-    )
-  }
-  if (active?.type === 'arch') {
-    return (
-      <Inspector snapshot={snapshot}
-        selected={selection?.scope === 'arch' ? { id: selection.id, kind: selection.kind } : null}
-        onClose={onClose} onFocus={archFocus} />
-    )
-  }
-  if (diagram) {
-    if (selection?.scope === 'uml' && selection.diagramId === diagram.id) {
-      return (
-        <UmlInspector snapshot={snapshot} diagram={diagram} selection={{ kind: selection.kind, id: selection.id }}
-          focusName={focusName} onClose={onClose} onOpenUseCase={onOpenUseCase} onFocusArch={onFocusArch} />
-      )
-    }
-    return <DiagramSummary diagram={diagram} onRename={onRename} onMermaid={onMermaid} onExport={onExport} />
-  }
-  return (
-    <p className="px-4 py-6 text-center text-[12px] leading-relaxed text-muted-foreground">
-      Selecione um elemento em um diagrama para editar suas propriedades.
-    </p>
-  )
-}
-
-function DiagramSummary({ diagram, onRename, onMermaid, onExport }: {
-  diagram: UMLDiagram; onRename: (d: UMLDiagram) => void; onMermaid: (d: UMLDiagram) => void; onExport: (f: 'png' | 'svg') => void
-}) {
-  const counts = new Map<string, number>()
-  for (const el of diagram.elements) counts.set(ELEMENT_LABEL[el.type], (counts.get(ELEMENT_LABEL[el.type]) ?? 0) + 1)
-  return (
-    <div className="space-y-3 p-3">
-      <div className="flex items-start gap-2">
-        <span className="mt-0.5"><KindGlyph kind={diagram.kind} size={18} /></span>
-        <div className="min-w-0">
-          <p className="truncate text-[13px] font-semibold">{diagram.name}</p>
-          <p className="text-[11.5px] text-muted-foreground">{KIND_META[diagram.kind].label}</p>
-        </div>
-      </div>
-      {diagram.description && <p className="text-[12px] leading-relaxed text-muted-foreground">{diagram.description}</p>}
-      <div className="flex flex-wrap gap-1">
-        {[...counts].map(([label, n]) => <Badge key={label}>{n} {label.toLowerCase()}</Badge>)}
-        <Badge>{diagram.relations.length} relações</Badge>
-      </div>
-      <p className="break-all font-mono text-[10.5px] text-muted-foreground">{diagram.file}</p>
-      <div className="flex flex-wrap gap-1.5">
-        <Button size="sm" variant="secondary" onClick={() => onRename(diagram)}>Propriedades…</Button>
-        <Button size="sm" variant="secondary" onClick={() => onMermaid(diagram)}>Mermaid</Button>
-        <Button size="sm" variant="secondary" onClick={() => onExport('png')}>PNG</Button>
-        <Button size="sm" variant="secondary" onClick={() => onExport('svg')}>SVG</Button>
-      </div>
-      <p className="border-t pt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-        Clique em um elemento para editá-lo. Use a Toolbox para criar formas e relações, ou peça a um agente de IA
-        via MCP (<code className="font-mono">add_uml_element</code>, <code className="font-mono">add_uml_relation</code>).
-      </p>
-    </div>
-  )
-}
-
-/* Modais ----------------------------------------------------------------------------- */
-
-function LintModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { lint } = useProject()
-  if (!lint) return null
-  const color = { error: 'var(--destructive)', warning: 'var(--warning)', info: 'var(--muted-foreground)' }
-
-  return (
-    <Modal open={open} onClose={onClose} wide title={`Validação da arquitetura — ${lint.score}/100`}
-      description={`${lint.errors} erro(s), ${lint.warnings} aviso(s), ${lint.infos} informativo(s). As mesmas regras rodam via MCP em validate_architecture_rules.`}>
-      {lint.findings.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-8">
-          <CheckCircle2 size={28} className="text-success" />
-          <p className="text-sm font-medium">Nenhum problema encontrado.</p>
-        </div>
-      ) : (
-        <ul className="max-h-[60vh] space-y-2 overflow-y-auto">
-          {lint.findings.map((f, i) => (
-            <li key={i} className="rounded-md border px-3 py-2.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge color={color[f.severity]}>{f.severity}</Badge>
-                <code className="font-mono text-[10.5px] text-muted-foreground">{f.rule}</code>
-                {f.target && <span className="text-[12.5px] font-semibold">{f.target}</span>}
-              </div>
-              <p className="mt-1 text-[12.5px] text-muted-foreground">{f.message}</p>
-              {f.fix && <p className="mt-1 text-[11.5px] text-primary">→ {f.fix}</p>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </Modal>
-  )
-}
-
-function McpModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [root, setRoot] = useState('.')
-  useEffect(() => {
-    if (open) api.health().then((h: { root: string }) => setRoot(h.root)).catch(() => {})
-  }, [open])
-
-  const json = `{
-  "mcpServers": {
-    "archcode-studio": {
-      "command": "archcode-studio",
-      "args": ["mcp", "--dir", "${root}"]
-    }
-  }
-}`
-
-  return (
-    <Modal open={open} onClose={onClose} wide title="Conectar um agente de IA"
-      description="O ArchCode Studio é um servidor Model Context Protocol: o agente lê e modifica arquitetura e diagramas UML com ferramentas atômicas, sem corromper o layout.">
-      <div className="space-y-4 text-sm">
-        <Section icon={Terminal} title="Claude Code">
-          <Code>{`claude mcp add archcode-studio -- archcode-studio mcp --dir ${root}`}</Code>
-        </Section>
-        <Section icon={Plug} title="Cursor, Antigravity, Windsurf, Roo Code">
-          <p className="mb-1.5 text-xs text-muted-foreground">Adicione ao <code>.mcp.json</code> do projeto ou à configuração global:</p>
-          <Code>{json}</Code>
-        </Section>
-        <Section icon={Play} title="Transporte SSE (servidor já rodando)">
-          <Code>{`${location.origin}/mcp/sse`}</Code>
-        </Section>
-        <Section icon={Info} title="Fluxo recomendado para o agente">
-          <ol className="list-decimal space-y-0.5 pl-4 text-xs leading-relaxed text-muted-foreground">
-            <li><code>get_system_context</code> — entender o sistema antes de agir</li>
-            <li><code>add_architecture_node</code> / <code>connect_nodes</code> — modelar a arquitetura</li>
-            <li><code>upsert_requirement</code> / <code>upsert_use_case</code> — justificar cada componente</li>
-            <li><code>generate_use_case_diagram</code>, <code>create_uml_diagram</code>, <code>add_uml_element</code>, <code>add_uml_relation</code> — casos de uso, classes, sequência e estados</li>
-            <li><code>validate_architecture_rules</code> — corrigir os erros apontados</li>
-            <li><code>generate_ai_prd</code> — compilar o blueprint em ordem topológica</li>
-            <li><code>get_implementation_tasks</code> → codificar → <code>mark_task_status</code></li>
-          </ol>
-        </Section>
-      </div>
-    </Modal>
-  )
-}
-
-function ShortcutsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const rows: [string, string][] = [
-    ['Ctrl + Z / Ctrl + Y', 'Desfazer / refazer (também Ctrl + Shift + Z)'],
-    ['Ctrl + C / X / V', 'Copiar, recortar e colar elementos (com as relações entre eles)'],
-    ['Ctrl + D', 'Duplicar a seleção'],
-    ['Ctrl + A', 'Selecionar tudo no diagrama'],
-    ['Del / Backspace', 'Excluir toda a seleção (desfazível)'],
-    ['F2 / duplo clique', 'Renomear o elemento selecionado'],
-    ['Clique direito', 'Menu de contexto: adicionar aqui, adicionar conectado, editar'],
-    ['Duplo clique no vazio', 'Adicionar um elemento na posição do cursor'],
-    ['Ctrl/Shift + clique', 'Adicionar ou remover da seleção'],
-    ['Esc', 'Voltar à ferramenta Selecionar / cancelar relação'],
-    ['Shift + 1', 'Ajustar o diagrama à tela'],
-    ['+ / −', 'Aproximar / afastar (diagramas UML)'],
-    ['Ctrl + B', 'Mostrar/ocultar Toolbox'],
-    ['Ctrl + J', 'Mostrar/ocultar Model Explorer e Editor'],
-    ['Arrastar a borda do painel', 'Redimensionar Toolbox, barra lateral e a altura Model Explorer/Editor (duplo clique restaura)'],
-    ['Clique no título do painel', 'Recolher/expandir o Model Explorer ou o Editor (o botão ⤢ maximiza)'],
-    ['Arrastar no vazio', 'Selecionar vários elementos com uma caixa'],
-    ['Botão do meio / scroll', 'Mover o canvas'],
-  ]
-  return (
-    <Modal open={open} onClose={onClose} title="Atalhos de teclado">
-      <table className="w-full text-[12.5px]">
-        <tbody>
-          {rows.map(([k, v]) => (
-            <tr key={k} className="border-b last:border-0">
-              <td className="py-1.5 pr-4"><kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[11px]">{k}</kbd></td>
-              <td className="py-1.5 text-muted-foreground">{v}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Modal>
-  )
-}
-
-function AboutModal({ open, onClose, snapshot }: { open: boolean; onClose: () => void; snapshot: Snapshot }) {
-  return (
-    <Modal open={open} onClose={onClose} title="ArchCode Studio"
-      description="Arquitetura-como-código, local-first, orientada a agentes de IA (MCP).">
-      <div className="space-y-2 text-[12.5px] text-muted-foreground">
-        <p>Projeto: <span className="text-foreground">{snapshot.manifest.project_name}</span> · schema {snapshot.manifest.schema_version}</p>
-        <p>
-          Diagramas: arquitetura macro + {snapshot.uml_diagrams?.length ?? 0} UML (casos de uso, classes, sequência e estados).
-          Tudo é gravado em arquivos texto na pasta do projeto — versionável em Git.
-        </p>
-      </div>
-    </Modal>
-  )
-}
-
-function Section({ icon: Icon, title, children }: { icon: typeof Info; title: string; children: ReactNode }) {
-  return (
-    <div>
-      <p className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold">
-        <Icon size={13} className="text-primary" />
-        {title}
-      </p>
-      {children}
-    </div>
-  )
-}
-
-function Code({ children }: { children: string }) {
-  const toast = useToast()
-  return (
-    <button onClick={() => { void navigator.clipboard.writeText(children); toast('success', 'Copiado') }}
-      className="block w-full cursor-copy overflow-x-auto rounded-md border bg-muted px-3 py-2 text-left font-mono text-[11px] leading-relaxed transition-colors hover:bg-accent"
-      title="Clique para copiar">
-      <pre className="whitespace-pre-wrap">{children}</pre>
-    </button>
   )
 }

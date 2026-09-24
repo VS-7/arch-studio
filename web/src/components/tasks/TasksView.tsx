@@ -7,6 +7,7 @@
 import { Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Lock, PlayCircle, Workflow, XCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api } from '../../lib/api'
+import { errorMessage } from '../../lib/errors'
 import { STATUS_META } from '../../lib/nodeMeta'
 import type { Snapshot, Task, TaskStatus } from '../../lib/types'
 import { ViewFrame } from '../shell/ViewFrame'
@@ -44,7 +45,7 @@ export function TasksView({ snapshot, onGeneratePRD }: { snapshot: Snapshot; onG
     try {
       const res = await api.setTaskStatus(task.id, status)
       toast('success', `${task.id} → ${STATUS_META[status].label} (${res.overall_progress_percentage}% do projeto)`)
-    } catch (err) { toast('error', (err as Error).message) }
+    } catch (err) { toast('error', errorMessage(err)) }
   }
 
   if (board.tasks.length === 0) {

@@ -1,5 +1,7 @@
 # Binários
 /archcode-studio
+/desktop/archcode-desktop
+/desktop/archcode-desktop.exe
 /dist/
 *.exe
 *.test

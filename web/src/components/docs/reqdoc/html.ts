@@ -2,6 +2,7 @@
 // processador de texto (A4, Arial, margens de 2,5 cm). O mesmo HTML alimenta a
 // pré-visualização e a impressão em PDF, então o que se vê é o que se exporta.
 
+import { platform } from '../../../lib/platform'
 import type { DocBlock, PriorityLevel, ReqDocument } from '../../../lib/types'
 import { escapeHtml, inlineHtml } from './inline'
 
@@ -110,21 +111,11 @@ export function documentHtml(doc: ReqDocument): string {
   return `<article class="rd"><div class="page">${cover}${history}${toc}${body}</div></article>`
 }
 
-/** Abre a janela de impressão do navegador (Salvar como PDF) com o documento. */
-export async function printDocument(doc: ReqDocument): Promise<void> {
-  const iframe = document.createElement('iframe')
-  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
-  document.body.appendChild(iframe)
-  const w = iframe.contentWindow!
-  w.document.open()
-  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
-    <base href="${location.origin}/"><title>${escapeHtml(`${doc.title} - ${doc.project}`)}</title>
+/** Abre o diálogo de impressão (Salvar como PDF) com o documento. As figuras já
+ * chegam com URL absoluta (api.reqDocument), então o iframe não precisa de <base>. */
+export function printDocument(doc: ReqDocument): Promise<void> {
+  return platform.printHtml(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+    <title>${escapeHtml(`${doc.title} - ${doc.project}`)}</title>
     <style>@page { size: A4; margin: 2.5cm 2.2cm; } html, body { margin: 0; background: #fff; }
     ${DOC_CSS}</style></head><body>${documentHtml(doc)}</body></html>`)
-  w.document.close()
-  // Espera as figuras (SVG dos diagramas) carregarem antes de imprimir.
-  await Promise.all([...w.document.images].map((img) => img.complete ? null : new Promise((r) => { img.onload = r; img.onerror = r })))
-  w.focus()
-  w.print()
-  setTimeout(() => iframe.remove(), 60_000)
 }

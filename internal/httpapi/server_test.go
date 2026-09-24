@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/archcode/studio/internal/app"
 	"github.com/archcode/studio/internal/hub"
@@ -24,7 +25,7 @@ func newTestServer(t *testing.T) (*httptest.Server, *store.Store) {
 		t.Fatal(err)
 	}
 	hb := hub.New()
-	srv := New(app.New(st, hb), hb, "test")
+	srv := New(app.New(st, hb), hb, Options{Version: "test", Assets: testAssets})
 	return httptest.NewServer(srv.Handler()), st
 }
 
@@ -118,7 +119,7 @@ func TestCicloDeVidaDoNoViaHTTP(t *testing.T) {
 	}
 
 	res, body = do(t, ts, "DELETE", "/api/diagram/nodes/inexistente", nil)
-	if res.StatusCode != http.StatusBadRequest {
+	if res.StatusCode != http.StatusNotFound {
 		t.Errorf("remover inexistente: status %d — %s", res.StatusCode, body)
 	}
 }
@@ -220,15 +221,53 @@ func TestLeituraDeArquivoRespeitaSandbox(t *testing.T) {
 	}
 }
 
+// testAssets imita o frontend compilado (internal/webui/dist).
+var testAssets = fstest.MapFS{
+	"index.html":    {Data: []byte("<!doctype html><html><head><title>t</title></head><body></body></html>")},
+	"assets/app.js": {Data: []byte("console.log(1)")},
+}
+
 func TestSPAFallback(t *testing.T) {
 	ts, _ := newTestServer(t)
 	defer ts.Close()
 
-	res, body := do(t, ts, "GET", "/rota/inexistente/do/spa", nil)
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("fallback do SPA: status %d", res.StatusCode)
+	for _, path := range []string{"/", "/rota/inexistente/do/spa"} {
+		res, body := do(t, ts, "GET", path, nil)
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("%s: status %d", path, res.StatusCode)
+		}
+		if !strings.Contains(string(body), `<meta name="archcode-host" content="web">`) {
+			t.Errorf("%s deveria devolver o index.html com o host injetado: %s", path, body)
+		}
 	}
-	if !strings.Contains(string(body), "<html") {
-		t.Error("fallback deveria devolver o index.html")
+	res, body := do(t, ts, "GET", "/assets/app.js", nil)
+	if res.StatusCode != http.StatusOK || string(body) != "console.log(1)" {
+		t.Errorf("asset estático: status %d — %s", res.StatusCode, body)
+	}
+}
+
+func TestRequisicoesDeOutroSiteSaoRecusadas(t *testing.T) {
+	ts, _ := newTestServer(t)
+	defer ts.Close()
+
+	send := func(origin string) int {
+		req, _ := http.NewRequest("PUT", ts.URL+"/api/file", strings.NewReader(`{"path":"docs/x.md","content":"x"}`))
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		return res.StatusCode
+	}
+	if code := send("https://site-malicioso.example"); code != http.StatusForbidden {
+		t.Errorf("origem externa: status %d, quer 403", code)
+	}
+	for _, origin := range []string{"", ts.URL, "http://localhost:5173", "wails://wails", "http://wails.localhost"} {
+		if code := send(origin); code != http.StatusOK {
+			t.Errorf("origem %q: status %d, quer 200", origin, code)
+		}
 	}
 }

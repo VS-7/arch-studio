@@ -52,9 +52,18 @@ var tierLabel = map[string]string{
 
 // Options controla a granularidade da compilação.
 type Options struct {
-	TargetStack          string
-	IncludeTestScenarios bool
-	Granularity          string // summary | detailed
+	TargetStack          string `json:"target_stack"`
+	IncludeTestScenarios bool   `json:"include_test_scenarios"`
+	Granularity          string `json:"granularity"` // summary | detailed
+}
+
+// Normalize aplica os padrões (granularidade "detailed").
+func (o Options) Normalize() Options {
+	o.TargetStack = strings.TrimSpace(o.TargetStack)
+	if !strings.EqualFold(o.Granularity, "summary") {
+		o.Granularity = "detailed"
+	}
+	return o
 }
 
 func (o Options) detailed() bool { return !strings.EqualFold(o.Granularity, "summary") }
@@ -898,4 +907,41 @@ func intsToStr(v []int) string {
 		parts = append(parts, fmt.Sprintf("`%d`", i))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// RefreshCheckboxes reescreve apenas as caixas de seleção das tarefas no
+// Markdown do AI-PRD ([x] concluída, [~] em andamento, [!] bloqueada),
+// mantendo o restante do documento intacto.
+func RefreshCheckboxes(md string, board *model.TaskBoard) (string, bool) {
+	lines := strings.Split(md, "\n")
+	changed := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "- [") || len(trimmed) < 6 {
+			continue
+		}
+		for _, t := range board.Tasks {
+			if !strings.Contains(line, "**"+t.ID+" ") {
+				continue
+			}
+			mark := " "
+			switch t.Status {
+			case model.StatusCompleted:
+				mark = "x"
+			case model.StatusInProgress:
+				mark = "~"
+			case model.StatusBlocked:
+				mark = "!"
+			}
+			idx := strings.Index(line, "- [")
+			if idx >= 0 && len(line) > idx+4 {
+				if updated := line[:idx+3] + mark + line[idx+4:]; updated != line {
+					lines[i] = updated
+					changed = true
+				}
+			}
+			break
+		}
+	}
+	return strings.Join(lines, "\n"), changed
 }

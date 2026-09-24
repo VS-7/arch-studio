@@ -101,8 +101,8 @@ func TestValidacaoDeTiposPorDiagrama(t *testing.T) {
 		t.Errorf("note_link válido rejeitado: %v", err)
 	}
 	d.Relations = []UMLRelation{{ID: "r", Type: "association", Source: "x", Target: "fantasma"}}
-	if err := d.Validate(); !errors.Is(err, ErrUMLNotFound) {
-		t.Errorf("extremidade inexistente deveria ser ErrUMLNotFound, got %v", err)
+	if err := d.Validate(); !errors.Is(err, ErrNotFound) {
+		t.Errorf("extremidade inexistente deveria ser ErrNotFound, got %v", err)
 	}
 
 	// Auto-mensagem e auto-transição são permitidas.

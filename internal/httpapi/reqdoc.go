@@ -71,7 +71,7 @@ func (s *Server) exportUMLSVG(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSuffix(r.PathValue("file"), ".svg")
 	svg, err := s.app.UMLSVG(id, r.URL.Query().Get("theme") == "dark")
 	if err != nil {
-		failUML(w, err)
+		fail(w, http.StatusBadRequest, err)
 		return
 	}
 	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")

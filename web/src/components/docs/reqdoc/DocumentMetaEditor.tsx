@@ -5,6 +5,7 @@
 import { Plus, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../../../lib/api'
+import { errorMessage } from '../../../lib/errors'
 import type { DocRevision, DocumentMeta, GlossaryTerm, Snapshot } from '../../../lib/types'
 import { Button, Field, IconAction, Input, Modal, StringList, Textarea, useToast } from '../../ui'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../ui/tabs'
@@ -27,7 +28,7 @@ export function DocumentMetaEditor({ open, onClose, snapshot }: { open: boolean;
     if (!open) return
     api.getDocumentMeta()
       .then((m) => setForm({ ...EMPTY, ...m }))
-      .catch((err: unknown) => toast('error', (err as Error).message))
+      .catch((err: unknown) => toast('error', errorMessage(err)))
   }, [open, toast])
 
   const set = <K extends keyof DocumentMeta>(key: K, value: DocumentMeta[K]) => setForm((f) => ({ ...f, [key]: value }))
@@ -44,7 +45,7 @@ export function DocumentMetaEditor({ open, onClose, snapshot }: { open: boolean;
       })
       toast('success', 'Dados do documento salvos em .arch/document.yaml')
       onClose()
-    } catch (err) { toast('error', (err as Error).message) } finally { setSaving(false) }
+    } catch (err) { toast('error', errorMessage(err)) } finally { setSaving(false) }
   }
 
   const actors = [...new Set(snapshot.use_cases.flatMap((uc) => uc.actors ?? []))]

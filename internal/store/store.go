@@ -46,8 +46,16 @@ const (
 	FileProposal  = "docs/proposta-comercial.md"
 	FileDocument  = ".arch/document.yaml"
 	FileReqDoc    = "docs/documento-de-requisitos.md"
+	FileOpenAPI   = "api/openapi.yaml"
 	DirDocImages  = "docs/diagramas"
 )
+
+// ProjectDirs são as pastas canônicas de um projeto: criadas pelo init e
+// observadas pelo watcher.
+var ProjectDirs = []string{
+	DirArch, DirDiagrams, DirSequence, DirER, DirUseCaseUML, DirClass, DirState,
+	DirDocs, DirUseCases, DirADR, DirAPI,
+}
 
 var ErrNotAProject = errors.New("diretório não é um projeto ArchCode Studio (.arch/manifest.yaml ausente)")
 
@@ -499,19 +507,6 @@ func (s *Store) SaveUseCase(uc *model.UseCase) (string, error) {
 	return target, s.WriteFile(target, []byte(model.RenderUseCase(uc)))
 }
 
-// NextUseCaseCode devolve o próximo código livre da série CDU.
-func (s *Store) NextUseCaseCode() string {
-	list, _ := s.ListUseCases()
-	max := 0
-	for _, uc := range list {
-		var n int
-		if _, err := fmt.Sscanf(strings.ToUpper(uc.Code), "CDU%d", &n); err == nil && n > max {
-			max = n
-		}
-	}
-	return fmt.Sprintf("CDU%03d", max+1)
-}
-
 // ---------------------------------------------------------------------------
 // ADRs
 // ---------------------------------------------------------------------------
@@ -551,11 +546,7 @@ func (s *Store) ListADRs() ([]model.ADR, error) {
 
 func (s *Store) SaveADR(adr *model.ADR) (string, error) {
 	if adr.ID == "" {
-		list, _ := s.ListADRs()
-		adr.ID = fmt.Sprintf("ADR-%03d", len(list)+1)
-	}
-	if adr.Date == "" {
-		adr.Date = time.Now().Format("2006-01-02")
+		return "", errors.New("ADR sem identificador (ex.: ADR-001)")
 	}
 	existing, _ := s.ListADRs()
 	target := DirADR + "/" + model.ADRFileName(adr)
@@ -694,7 +685,7 @@ func (s *Store) ListUMLDiagrams() ([]model.UMLDiagram, error) {
 // LoadUMLDiagram localiza o diagrama pelo id em qualquer um dos diretórios.
 func (s *Store) LoadUMLDiagram(id string) (*model.UMLDiagram, error) {
 	if !validUMLID(id) {
-		return nil, model.UMLNotFound("diagrama UML não encontrado: %q", id)
+		return nil, model.NotFound("diagrama UML não encontrado: %q", id)
 	}
 	for _, kind := range model.UMLKinds {
 		if !s.Exists(UMLPath(kind, id)) {
@@ -702,7 +693,7 @@ func (s *Store) LoadUMLDiagram(id string) (*model.UMLDiagram, error) {
 		}
 		return s.readUMLFile(kind, id)
 	}
-	return nil, model.UMLNotFound("diagrama UML não encontrado: %q", id)
+	return nil, model.NotFound("diagrama UML não encontrado: %q", id)
 }
 
 // SaveUMLDiagram grava o JSON do diagrama de forma atômica. O campo `file` é

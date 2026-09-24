@@ -42,7 +42,7 @@ editáveis por humanos no navegador, por desenvolvedores no VS Code e por agente
 ## Instalação
 
 ```bash
-# A partir do código-fonte (requer Go 1.24+ e Node 20+)
+# A partir do código-fonte (requer Go 1.25+ e Node 20+)
 git clone https://github.com/archcode/studio archcode-studio
 cd archcode-studio
 make deps && make build
@@ -50,9 +50,43 @@ sudo mv archcode-studio /usr/local/bin/
 
 # Docker
 docker run -p 8765:8765 -v "$PWD:/workspace" ghcr.io/archcode/studio
+
+# App desktop (Wails v3) — veja "App desktop" abaixo
+make desktop            # binário nativo em dist/archcode-desktop
 ```
 
 O binário final embute todo o frontend: a máquina do usuário **não precisa de Node.js**.
+
+---
+
+## App desktop
+
+O ArchCode Studio também roda como aplicativo nativo ([Wails v3](https://v3.wails.io), `v3.0.0-beta.25`),
+com a **mesma interface e a mesma API** do `archcode-studio serve` — sem porta TCP aberta: o asset
+server do Wails entrega o frontend e a API diretamente à janela.
+
+- **Projetos** — tela inicial com *Abrir projeto…*, *Novo projeto…* e os recentes; o menu *Arquivo*
+  ganha as mesmas ações (`Ctrl+O`). Abrir uma pasta que ainda não é projeto oferece criá-lo nela.
+  `archcode-desktop <pasta>` abre direto; sem argumento, reabre o último projeto.
+- **Nativo** — exportações usam o diálogo *Salvar como* do sistema, o PDF do Documento de Requisitos
+  abre numa janela própria com o diálogo de impressão, links externos abrem no navegador e uma
+  segunda execução do app só foca a janela aberta.
+- **Tempo real** — edições feitas por agentes de IA ou por outros editores aparecem na janela como no
+  navegador (eventos do Wails no lugar do WebSocket).
+- **Agentes de IA** — o próprio executável serve MCP em stdio: `archcode-desktop mcp --dir <projeto>`
+  (o diálogo *Conectar agente de IA* mostra o comando pronto).
+
+```bash
+make desktop            # Linux/macOS: binário para o sistema atual (CGO)
+make desktop-windows    # Windows: compila de qualquer sistema, sem CGO
+make desktop-dev        # modo desenvolvimento, com DevTools
+```
+
+Dependências nativas no Linux: `libgtk-4-dev libwebkitgtk-6.0-dev` (padrão do Wails v3). Em distros
+sem GTK 4.14, use GTK 3: `make desktop DESKTOP_TAGS="production gtk3"` com `libgtk-3-dev
+libwebkit2gtk-4.1-dev`. No macOS basta o Xcode Command Line Tools; no Windows, o WebView2 (já presente
+no Windows 10/11). Instaladores (`.deb`, AppImage, NSIS, `.app`) podem ser gerados com o CLI
+`wails3` a partir deste binário.
 
 ## Deploy no Coolify
 
@@ -363,40 +397,42 @@ make check       # gofmt, go vet, testes e typecheck — o mesmo que a CI roda
 make test-race   # testes com o detector de corrida
 make build       # binário único com o frontend embutido
 make release     # binários para Linux, macOS (Intel e Apple Silicon) e Windows
+make desktop     # app desktop (Wails v3) para o sistema atual
 ```
 
 ### Organização do código
 
 ```text
-cmd/archcode-studio/    CLI e composição dos subcomandos
+cmd/archcode-studio/    CLI: um arquivo por comando (serve, mcp, init, relatórios, export)
+desktop/                app desktop Wails v3 (módulo Go próprio, com CGO)
+  internal/workspace/   projeto aberto, recentes e o handler da janela (testável sem GUI)
 internal/
-  model/                estruturas canônicas + serialização Markdown bidirecional
+  studio/               composição: store + app + watcher + HTTP + MCP para uma pasta
+  app/                  casos de uso — única camada que lê e muta o projeto (um arquivo por área)
+  model/                estruturas canônicas, serialização Markdown e tipos de erro
   store/                acesso ao disco: escrita atômica, supressão de eco, snapshot
-  app/                  operações de domínio — única camada que muta estado
-  layout/               posicionamento inteligente e layout topológico
-  mermaid/              exportação determinística e importação de snippets
-  prd/                  compilador do AI-PRD e ordenação topológica
-  pricing/              motor de esforço, custo e prazo
-  lint/                 linter de regras arquiteturais
-  svgexport/            renderização SVG server-side
-  httpapi/              REST + WebSocket + SPA embutida
-  mcpserver/            ferramentas e prompts MCP
-  hub/ watcher/         eventos em tempo real e observação do disco
+  httpapi/              adaptador REST + WebSocket + SPA embutida
+  mcpserver/            adaptador MCP: ferramentas e prompts
+  hub/                  barramento de eventos em memória (assinantes: WebSocket, janela desktop)
+  watcher/              observa o disco e avisa o app de edições externas
+  prd/ proposal/ openapi/ reqdoc/ lint/ pricing/ layout/ mermaid/ svgexport/
+                        geradores puros (entrada → saída), testados isoladamente
   project/              scaffolding do `init`
   webui/                embed.FS do bundle compilado
 web/                    frontend React 19 + Vite + Tailwind 4 + shadcn/ui + React Flow 12
-  src/components/ui/    componentes shadcn/ui (components.json na raiz de web/)
-  src/components/shell/ menus, Toolbox e Model Explorer (layout estilo StarUML)
+  src/lib/transport.ts  ApiClient (HTTP) + EventStream (WebSocket ou eventos do Wails)
+  src/lib/platform.ts   salvar, imprimir e copiar (navegador ou diálogos nativos)
+  src/components/shell/ menus, Toolbox, Model Explorer, abas e hooks do layout (estilo StarUML)
   src/components/uml/   formas, relações, canvas e editor dos diagramas UML
 ```
 
-A API HTTP e o servidor MCP chamam **exatamente os mesmos métodos** do pacote `app`. Uma escrita de
-IA passa pelas mesmas invariantes de uma ação humana — é isso que torna a colaboração segura.
-
-### Preparação para Wails v3
-
-O frontend conversa com o backend apenas através de `web/src/lib/transport.ts`. Para empacotar como
-app desktop nativo, registre ali uma implementação de IPC: nenhum componente de interface muda.
+A API HTTP, o servidor MCP, o CLI e o app desktop chamam **exatamente os mesmos métodos** do pacote
+`app`, montados num só lugar (`internal/studio`). Uma escrita de IA passa pelas mesmas invariantes de
+uma ação humana — é isso que torna a colaboração segura. O `app` publica eventos no `hub`, e cada
+transporte só assina o barramento: o navegador recebe por WebSocket, a janela desktop por eventos do
+Wails. No frontend, a escolha do transporte e dos recursos nativos acontece em um único ponto
+(`transport.ts` e `platform.ts`), a partir do `<meta name="archcode-host">` que o servidor injeta no
+`index.html` — nenhum componente de interface sabe onde está rodando.
 
 ---
 
@@ -422,7 +458,7 @@ Duas escolhas conscientes, ambas documentadas no código:
 - [x] **Fase 2** — Servidor MCP (stdio + SSE), ferramentas atômicas, compilador de AI-PRD
 - [x] **Fase 3** — Documentação, Mermaid bidirecional, Modo Pitch, exportações
 - [x] **Fase 4** — Precificação, proposta comercial, linter, OpenAPI 3.1
-- [ ] **Fase 5** — App desktop nativo com Wails v3 (a camada de transporte já está pronta)
+- [x] **Fase 5** — App desktop nativo com Wails v3
 
 ---
 

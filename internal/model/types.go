@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -364,6 +365,40 @@ func (r *RequirementsDoc) Sort() {
 }
 
 // NextRequirementID devolve o próximo identificador livre para o tipo informado.
+// NextADRID devolve o próximo identificador livre da série ADR-NNN. Usa o
+// maior número existente (e não a quantidade), para não reaproveitar o número
+// de uma decisão ainda gravada depois que outra foi removida.
+func NextADRID(list []ADR) string {
+	ids := make([]string, len(list))
+	for i, adr := range list {
+		ids[i] = adr.ID
+	}
+	return "ADR-" + fmt.Sprintf("%03d", maxSeq(ids, `^ADR-(\d+)$`)+1)
+}
+
+// NextUseCaseCode devolve o próximo código livre da série CDU.
+func NextUseCaseCode(list []UseCase) string {
+	codes := make([]string, len(list))
+	for i, uc := range list {
+		codes[i] = uc.Code
+	}
+	return fmt.Sprintf("CDU%03d", maxSeq(codes, `^CDU(\d+)$`)+1)
+}
+
+// maxSeq devolve o maior número capturado por pattern entre os ids (0 se nenhum).
+func maxSeq(ids []string, pattern string) int {
+	re := regexp.MustCompile(pattern)
+	max := 0
+	for _, id := range ids {
+		if m := re.FindStringSubmatch(strings.ToUpper(strings.TrimSpace(id))); m != nil {
+			if n, err := strconv.Atoi(m[1]); err == nil && n > max {
+				max = n
+			}
+		}
+	}
+	return max
+}
+
 func (r *RequirementsDoc) NextRequirementID(kind string) string {
 	kind = strings.ToUpper(kind)
 	if kind != "RNF" {

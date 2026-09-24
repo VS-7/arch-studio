@@ -44,6 +44,24 @@ type Input struct {
 }
 
 // Run executa todas as regras e devolve um relatório ordenado por severidade.
+// Filter mantém só os achados com severidade igual ou mais grave que
+// minSeverity ("" ou desconhecida = todos). Contagens e score não mudam: o
+// filtro é de apresentação.
+func (r *Report) Filter(minSeverity string) {
+	rank := map[string]int{SeverityError: 0, SeverityWarning: 1, SeverityInfo: 2}
+	limit, ok := rank[minSeverity]
+	if !ok {
+		return
+	}
+	kept := r.Findings[:0]
+	for _, f := range r.Findings {
+		if rank[f.Severity] <= limit {
+			kept = append(kept, f)
+		}
+	}
+	r.Findings = kept
+}
+
 func Run(in Input) *Report {
 	rep := &Report{Findings: []Finding{}}
 	d := in.Diagram

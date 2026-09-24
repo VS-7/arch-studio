@@ -93,7 +93,7 @@ func TestDiagramaUMLCicloCompleto(t *testing.T) {
 	if len(after.Relations) != 0 {
 		t.Errorf("relações ligadas ao elemento removido sobreviveram: %+v", after.Relations)
 	}
-	if err := a.RemoveUMLElement(d.ID, "el-user", hub.SourceUI); !errors.Is(err, model.ErrUMLNotFound) {
+	if err := a.RemoveUMLElement(d.ID, "el-user", hub.SourceUI); !errors.Is(err, model.ErrNotFound) {
 		t.Errorf("remover de novo deveria ser ErrUMLNotFound, got %v", err)
 	}
 

@@ -2,7 +2,8 @@
 // do StarUML. Cada item só dispara callbacks; o estado vive no Shell.
 
 import {
-  Bot, ClipboardPaste, Code2, Copy, CopyPlus, Download, FileImage, FilePlus2, Keyboard, LayoutPanelLeft, Maximize,
+  Bot, ClipboardPaste, Code2, Copy, CopyPlus, Download, FileImage, FilePlus2, FolderOpen, FolderPlus, FolderX, History,
+  Keyboard, LayoutPanelLeft, Maximize,
   Monitor, Moon, Network, PanelsTopLeft, Plug, Presentation, Redo2, Scissors, ShieldCheck, Sparkles,
   SquareDashedMousePointer, Sun, Trash2, Undo2, Wand2, ZoomIn, ZoomOut,
 } from 'lucide-react'
@@ -15,6 +16,7 @@ import {
   MenubarShortcut, MenubarSub, MenubarSubContent, MenubarSubTrigger, MenubarTrigger,
 } from '../ui/menubar'
 import { KindGlyph } from '../uml/UmlGlyph'
+import type { ProjectActions } from './DesktopProjects'
 import { VIEW_ICON, VIEW_ORDER } from './viewMeta'
 
 export interface MenuActions {
@@ -43,6 +45,8 @@ export interface MenuActions {
   about: () => void
   openView: (view: ViewId) => void
   resetLayout: () => void
+  /** Abrir, criar e fechar projetos — só no app desktop (null no navegador). */
+  project: ProjectActions | null
 }
 
 export function AppMenubar({ actions, theme, onTheme, panels, onPanels, executive, onExecutive, archActive }: {
@@ -60,6 +64,7 @@ export function AppMenubar({ actions, theme, onTheme, panels, onPanels, executiv
       <MenubarMenu>
         <MenubarTrigger>Arquivo</MenubarTrigger>
         <MenubarContent>
+          {actions.project && <ProjectItems project={actions.project} />}
           <MenubarSub>
             <MenubarSubTrigger><FilePlus2 />Novo diagrama</MenubarSubTrigger>
             <MenubarSubContent>
@@ -168,5 +173,27 @@ export function AppMenubar({ actions, theme, onTheme, panels, onPanels, executiv
         </MenubarContent>
       </MenubarMenu>
     </Menubar>
+  )
+}
+
+/** Itens de projeto do menu Arquivo no app desktop. */
+function ProjectItems({ project }: { project: ProjectActions }) {
+  return (
+    <>
+      <MenubarItem onSelect={project.open}><FolderOpen />Abrir projeto…<MenubarShortcut>Ctrl+O</MenubarShortcut></MenubarItem>
+      <MenubarItem onSelect={project.create}><FolderPlus />Novo projeto…</MenubarItem>
+      <MenubarSub>
+        <MenubarSubTrigger disabled={project.recent.length === 0}><History />Projetos recentes</MenubarSubTrigger>
+        <MenubarSubContent className="max-w-sm">
+          {project.recent.map((p) => (
+            <MenubarItem key={p.root} onSelect={() => project.openRecent(p.root)} title={p.root}>
+              <span className="truncate">{p.name}</span>
+            </MenubarItem>
+          ))}
+        </MenubarSubContent>
+      </MenubarSub>
+      <MenubarItem onSelect={project.close}><FolderX />Fechar projeto</MenubarItem>
+      <MenubarSeparator />
+    </>
   )
 }

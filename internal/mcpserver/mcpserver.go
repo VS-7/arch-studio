@@ -286,9 +286,11 @@ func registerTools(s *server.MCPServer, a *app.App) {
 			return errResult(err)
 		}
 		in := app.EdgeInput{
-			SourceID:    sourceID,
-			TargetID:    targetID,
-			Protocol:    req.GetString("protocol", "REST"),
+			SourceID: sourceID,
+			TargetID: targetID,
+			// Vazio preserva o protocolo de uma conexão existente; conexões
+			// novas nascem REST (padrão do app).
+			Protocol:    req.GetString("protocol", ""),
 			Port:        req.GetInt("port", 0),
 			Security:    req.GetString("security", ""),
 			Description: req.GetString("description", ""),
@@ -584,7 +586,7 @@ func registerTools(s *server.MCPServer, a *app.App) {
 		res, err := a.GenerateAIPRD(prd.Options{
 			TargetStack:          req.GetString("target_stack", ""),
 			IncludeTestScenarios: req.GetBool("include_test_scenarios", true),
-			Granularity:          req.GetString("granularity", "detailed"),
+			Granularity:          req.GetString("granularity", ""),
 		}, hub.SourceAI)
 		if err != nil {
 			return errResult(err)
@@ -611,36 +613,26 @@ func registerTools(s *server.MCPServer, a *app.App) {
 			mcp.DefaultBool(false)),
 		mcp.WithNumber("limit", mcp.Description("Número máximo de tarefas retornadas."), mcp.DefaultNumber(20)),
 	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		tasks, board, err := a.ImplementationTasks(req.GetString("status", "pending"))
+		list, err := a.ImplementationTasks(app.TaskQuery{
+			Status:    req.GetString("status", "pending"),
+			OnlyReady: req.GetBool("only_ready", false),
+			Limit:     req.GetInt("limit", 20),
+		})
 		if err != nil {
 			return errResult(err)
 		}
+		tasks, board := list.Tasks, list.Board
 		if len(board.Tasks) == 0 {
 			return jsonResult(map[string]any{
 				"tasks": []any{}, "total": 0,
 				"hint": "Nenhum AI-PRD gerado ainda. Chame generate_ai_prd primeiro.",
 			})
 		}
-		if req.GetBool("only_ready", false) {
-			filtered := tasks[:0]
-			for _, t := range tasks {
-				if t.Ready {
-					filtered = append(filtered, t)
-				}
-			}
-			tasks = filtered
-		}
-		limit := req.GetInt("limit", 20)
-		truncated := false
-		if limit > 0 && len(tasks) > limit {
-			tasks = tasks[:limit]
-			truncated = true
-		}
 		return jsonResult(map[string]any{
 			"tasks": tasks, "total_in_board": len(board.Tasks),
 			"overall_progress_percentage": board.ProgressPercentage(),
 			"target_stack":                board.TargetStack,
-			"truncated":                   truncated,
+			"truncated":                   list.Truncated,
 		})
 	})
 
@@ -684,15 +676,7 @@ func registerTools(s *server.MCPServer, a *app.App) {
 		if err != nil {
 			return errResult(err)
 		}
-		minSev := req.GetString("min_severity", "info")
-		rank := map[string]int{"error": 0, "warning": 1, "info": 2}
-		filtered := rep.Findings[:0]
-		for _, f := range rep.Findings {
-			if rank[f.Severity] <= rank[minSev] {
-				filtered = append(filtered, f)
-			}
-		}
-		rep.Findings = filtered
+		rep.Filter(req.GetString("min_severity", "info"))
 		return jsonResult(rep)
 	})
 

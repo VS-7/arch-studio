@@ -2,37 +2,24 @@
 //
 // O SVG é gerado pelo backend Go, então a saída é idêntica no browser, no app
 // desktop e na CLI. PNG é rasterizado no cliente a partir desse mesmo SVG; o PDF
-// usa a janela de impressão do sistema, que permite escolher tamanho e margens.
+// usa o diálogo de impressão do sistema, que permite escolher tamanho e margens.
 
 import { api } from './api'
+import { slugify } from './format'
+import { platform } from './platform'
 
 export type ExportMode = 'executive' | 'engineering'
 
-function triggerDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = filename
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-  // Revoga depois do clique para não cancelar o download em navegadores lentos.
-  setTimeout(() => URL.revokeObjectURL(url), 4000)
-}
-
-function slugify(value: string): string {
-  return value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'arquitetura'
-}
+const fileName = (projectName: string, ext: string) => `${slugify(projectName, 'arquitetura')}-arquitetura.${ext}`
 
 export async function exportSvg(projectName: string, mode: ExportMode, dark: boolean) {
-  const svg = await api.fetchSvg({ mode, theme: dark ? 'dark' : 'light' })
-  triggerDownload(new Blob([svg], { type: 'image/svg+xml' }), `${slugify(projectName)}-arquitetura.svg`)
+  const svg = await api.exportSvg({ mode, theme: dark ? 'dark' : 'light' })
+  await platform.saveFile(new Blob([svg], { type: 'image/svg+xml' }), fileName(projectName, 'svg'))
 }
 
 export async function exportPng(projectName: string, mode: ExportMode, options?: { scale?: number; transparent?: boolean; dark?: boolean }) {
   const scale = options?.scale ?? 2
-  const svg = await api.fetchSvg({
+  const svg = await api.exportSvg({
     mode, theme: options?.dark ? 'dark' : 'light', transparent: options?.transparent,
   })
 
@@ -60,12 +47,12 @@ export async function exportPng(projectName: string, mode: ExportMode, options?:
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
   if (!blob) throw new Error('falha ao gerar PNG')
-  triggerDownload(blob, `${slugify(projectName)}-arquitetura.png`)
+  await platform.saveFile(blob, fileName(projectName, 'png'))
 }
 
 /**
- * Abre uma página de impressão com o diagrama e o sumário executivo, para que o
- * usuário salve como PDF pelo diálogo nativo do sistema.
+ * Imprime uma página com o diagrama e o sumário executivo, para que o usuário
+ * salve como PDF pelo diálogo nativo do sistema.
  */
 export async function exportPdf(projectName: string, mode: ExportMode, summary: {
   description?: string
@@ -76,15 +63,12 @@ export async function exportPdf(projectName: string, mode: ExportMode, summary: 
   totalCost?: string
   duration?: string
 }) {
-  const svg = await api.fetchSvg({ mode, theme: 'light', title: false })
-  const win = window.open('', '_blank', 'width=1200,height=860')
-  if (!win) throw new Error('o navegador bloqueou a janela de impressão')
-
+  const svg = await api.exportSvg({ mode, theme: 'light', title: false })
   const esc = (s: string) => s.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] ?? c))
   const row = (label: string, value?: string) =>
     value ? `<tr><th>${esc(label)}</th><td>${esc(value)}</td></tr>` : ''
 
-  win.document.write(`<!doctype html>
+  await platform.printHtml(`<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(projectName)} — Arquitetura</title>
 <style>
   @page { size: A4 landscape; margin: 14mm; }
@@ -112,7 +96,5 @@ export async function exportPdf(projectName: string, mode: ExportMode, summary: 
     ${row('Prazo estimado', summary.duration)}
   </table>
   <footer>Gerado pelo ArchCode Studio em ${new Date().toLocaleDateString('pt-BR')}.</footer>
-  <script>window.onload = () => { window.focus(); window.print(); }<\/script>
 </body></html>`)
-  win.document.close()
 }

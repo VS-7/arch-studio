@@ -230,3 +230,19 @@ func TestSecaoUMLEntraNoDocumentoENoHash(t *testing.T) {
 		t.Error("diagramas UML deveriam entrar no hash de integridade")
 	}
 }
+
+func TestRefreshCheckboxesSoMudaAsCaixas(t *testing.T) {
+	md := "# PRD\n\n- [ ] **TASK-A-01 — Banco**\n  - [ ] critério solto\n- [ ] **TASK-B-01 — API**\n"
+	board := &model.TaskBoard{Tasks: []model.Task{
+		{ID: "TASK-A-01", Status: model.StatusCompleted},
+		{ID: "TASK-B-01", Status: model.StatusBlocked},
+	}}
+	got, changed := RefreshCheckboxes(md, board)
+	want := "# PRD\n\n- [x] **TASK-A-01 — Banco**\n  - [ ] critério solto\n- [!] **TASK-B-01 — API**\n"
+	if !changed || got != want {
+		t.Fatalf("changed=%v\n%s", changed, got)
+	}
+	if _, again := RefreshCheckboxes(got, board); again {
+		t.Error("segunda passada não deveria mudar nada")
+	}
+}

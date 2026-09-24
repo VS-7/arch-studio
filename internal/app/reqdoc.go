@@ -147,7 +147,7 @@ func renderFigure(snap *store.Snapshot, b reqdoc.Block) ([]byte, error) {
 			return svgexport.RenderUML(&snap.UMLDiagrams[i], svgexport.UMLOptions{}), nil
 		}
 	}
-	return nil, model.UMLNotFound("diagrama UML não encontrado: %q", b.Diagram)
+	return nil, model.NotFound("diagrama UML não encontrado: %q", b.Diagram)
 }
 
 // GenerateRequirementsDocument grava o documento de requisitos em Markdown

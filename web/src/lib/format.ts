@@ -32,3 +32,9 @@ export function relativeTime(iso: string): string {
   if (hoursAgo < 24) return `há ${hoursAgo}h`
   return new Date(iso).toLocaleDateString('pt-BR')
 }
+
+/** Nome de arquivo seguro a partir de um título ("Projeto Ágil" → "projeto-agil"). */
+export function slugify(value: string, fallback = 'arquivo'): string {
+  return value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || fallback
+}

@@ -5,6 +5,7 @@
 // (o Word não aceita SVG sem uma versão PNG de apoio). A biblioteca `docx` é
 // carregada sob demanda para não pesar no carregamento do Studio.
 
+import { api } from '../../../lib/api'
 import type { DocBlock, PriorityLevel, ReqDocument } from '../../../lib/types'
 import { parseInline, type InlineRun } from './inline'
 
@@ -36,9 +37,7 @@ function runs(d: Docx, text: string, base: { bold?: boolean; size?: number } = {
 
 async function svgToPng(src: string): Promise<{ data: ArrayBuffer; width: number; height: number } | null> {
   try {
-    const res = await fetch(src)
-    if (!res.ok) return null
-    const svg = await res.text()
+    const svg = await (await api.fetchFigure(src)).text()
     const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
     const img = new Image()
     await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = () => reject(new Error('svg')); img.src = url })

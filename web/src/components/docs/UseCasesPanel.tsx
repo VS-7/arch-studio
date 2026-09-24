@@ -4,6 +4,7 @@
 import { ListChecks, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
+import { errorMessage } from '../../lib/errors'
 import type { Snapshot, UseCase } from '../../lib/types'
 import { PRIORITIES } from '../../lib/requirements'
 import { ViewFrame } from '../shell/ViewFrame'
@@ -29,7 +30,7 @@ export function UseCasesPanel({ snapshot, focusCode }: { snapshot: Snapshot; foc
     try {
       await api.deleteUseCase(code)
       toast('success', `${code} removido`)
-    } catch (err) { toast('error', (err as Error).message) }
+    } catch (err) { toast('error', errorMessage(err)) }
   }
 
   const save = async (uc: UseCase) => {
@@ -37,7 +38,7 @@ export function UseCasesPanel({ snapshot, focusCode }: { snapshot: Snapshot; foc
       const res = await api.upsertUseCase(uc)
       toast('success', `${res.use_case.code} salvo em ${res.file}`)
       setEditing(null)
-    } catch (err) { toast('error', (err as Error).message) }
+    } catch (err) { toast('error', errorMessage(err)) }
   }
 
   return (

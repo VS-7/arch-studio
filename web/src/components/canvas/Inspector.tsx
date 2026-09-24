@@ -4,6 +4,7 @@
 import { Trash2, Unlink } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../../lib/api'
+import { errorMessage } from '../../lib/errors'
 import { NODE_META, NODE_TYPES, PROTOCOLS, SECURITY_SCHEMES, STATUS_META, TIERS, nodeMeta } from '../../lib/nodeMeta'
 import type { ArchEdge, ArchNode, Snapshot } from '../../lib/types'
 import { Badge, Button, Field, Input, Select, Textarea, useToast } from '../ui'
@@ -39,17 +40,14 @@ export function Inspector({ snapshot, selected, onClose, onFocus }: Props) {
 
 /* -------------------------------------------------------------------------- */
 
-function NodeInspector({ node, snapshot, onClose, onFocus }: {
-  node: ArchNode; snapshot: Snapshot; onClose: () => void; onFocus: (id: string) => void
-}) {
-  const toast = useToast()
-  const meta = nodeMeta(node.type)
-  const [form, setForm] = useState(() => ({
+/** Campos editáveis do componente (tags como texto separado por vírgulas). */
+function toNodeForm(node: ArchNode) {
+  return {
     label: node.data.label,
     type: node.type as string,
     technology: node.data.technology ?? '',
     description: node.data.description ?? '',
-    tier: node.data.tier ?? meta.tier,
+    tier: node.data.tier ?? nodeMeta(node.type).tier,
     tags: (node.data.tags ?? []).join(', '),
     complexity: node.data.pricing?.complexity ?? 'medium',
     estimated_hours: node.data.pricing?.estimated_hours ?? 0,
@@ -57,25 +55,18 @@ function NodeInspector({ node, snapshot, onClose, onFocus }: {
     monthly_cost: node.data.pricing?.monthly_cost ?? 0,
     executive: node.data.executive !== false,
     status: node.data.status ?? 'pending',
-  }))
+  }
+}
+
+function NodeInspector({ node, snapshot, onClose, onFocus }: {
+  node: ArchNode; snapshot: Snapshot; onClose: () => void; onFocus: (id: string) => void
+}) {
+  const toast = useToast()
+  const meta = nodeMeta(node.type)
+  const [form, setForm] = useState(() => toNodeForm(node))
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    setForm({
-      label: node.data.label,
-      type: node.type,
-      technology: node.data.technology ?? '',
-      description: node.data.description ?? '',
-      tier: node.data.tier ?? meta.tier,
-      tags: (node.data.tags ?? []).join(', '),
-      complexity: node.data.pricing?.complexity ?? 'medium',
-      estimated_hours: node.data.pricing?.estimated_hours ?? 0,
-      cloud_tier: node.data.pricing?.cloud_tier ?? '',
-      monthly_cost: node.data.pricing?.monthly_cost ?? 0,
-      executive: node.data.executive !== false,
-      status: node.data.status ?? 'pending',
-    })
-  }, [node, meta.tier])
+  useEffect(() => { setForm(toNodeForm(node)) }, [node])
 
   const save = async () => {
     setSaving(true)
@@ -108,7 +99,7 @@ function NodeInspector({ node, snapshot, onClose, onFocus }: {
       })
       toast('success', 'Componente atualizado')
     } catch (err) {
-      toast('error', (err as Error).message)
+      toast('error', errorMessage(err))
     } finally {
       setSaving(false)
     }
@@ -121,7 +112,7 @@ function NodeInspector({ node, snapshot, onClose, onFocus }: {
       toast('success', `"${node.data.label}" removido · Ctrl+Z desfaz`)
       onClose()
     } catch (err) {
-      toast('error', (err as Error).message)
+      toast('error', errorMessage(err))
     }
   }
 
@@ -304,7 +295,7 @@ function EdgeInspector({ edge, snapshot, onClose }: { edge: ArchEdge; snapshot: 
       })
       toast('success', 'Conexão atualizada')
     } catch (err) {
-      toast('error', (err as Error).message)
+      toast('error', errorMessage(err))
     } finally {
       setSaving(false)
     }
@@ -316,7 +307,7 @@ function EdgeInspector({ edge, snapshot, onClose }: { edge: ArchEdge; snapshot: 
       toast('success', 'Conexão removida · Ctrl+Z desfaz')
       onClose()
     } catch (err) {
-      toast('error', (err as Error).message)
+      toast('error', errorMessage(err))
     }
   }
 

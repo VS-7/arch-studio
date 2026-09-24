@@ -4,6 +4,7 @@
 import { Calculator, Cloud, Coins, FileSignature, Receipt, Settings2, Timer } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../../lib/api'
+import { errorMessage } from '../../lib/errors'
 import { hours as fmtHours, money } from '../../lib/format'
 import { nodeMeta } from '../../lib/nodeMeta'
 import type { Estimate, PricingConfig, Snapshot } from '../../lib/types'
@@ -34,7 +35,7 @@ export function PricingView({ snapshot }: { snapshot: Snapshot }) {
     setLoading(true)
     api.estimate(margin)
       .then((est: Estimate) => { if (active) setEstimate(est) })
-      .catch((err: unknown) => toast('error', (err as Error).message))
+      .catch((err: unknown) => toast('error', errorMessage(err)))
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
     // Recalcula quando o diagrama, os casos de uso ou a margem mudam.
@@ -224,7 +225,7 @@ function PricingConfigModal({ open, onClose, config }: { open: boolean; onClose:
       await api.savePricing(form)
       toast('success', '.arch/pricing.yaml atualizado')
       onClose()
-    } catch (err) { toast('error', (err as Error).message) } finally { setSaving(false) }
+    } catch (err) { toast('error', errorMessage(err)) } finally { setSaving(false) }
   }
 
   const roles = Object.keys(form.hourly_rates ?? {}).sort()

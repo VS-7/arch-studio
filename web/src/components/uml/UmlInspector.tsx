@@ -5,6 +5,7 @@ import { ArrowDown, ArrowLeftRight, ArrowUp, ExternalLink, Plus, Trash2, X } fro
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { api } from '../../lib/api'
+import { errorMessage } from '../../lib/errors'
 import type {
   FragmentOperator, LifelineKind, MessageKind, Snapshot, UMLDiagram, UMLElement, UMLMember,
   UMLRelation, UMLRelationType, Visibility,
@@ -119,14 +120,14 @@ function ElementEditor({ snapshot, diagram, el, focusName, onClose, onOpenUseCas
 }) {
   const toast = useToast()
   const patch = (p: Partial<UMLElement>) =>
-    api.updateUMLElement(diagram.id, el.id, p).catch((err: unknown) => toast('error', (err as Error).message))
+    api.updateUMLElement(diagram.id, el.id, p).catch((err: unknown) => toast('error', errorMessage(err)))
   // Sem confirmação: a exclusão entra no histórico e o toast oferece desfazer (Ctrl+Z).
   const remove = async () => {
     try {
       await api.deleteUMLElement(diagram.id, el.id)
       onClose()
       toast('success', `"${el.name || ELEMENT_LABEL[el.type]}" excluído · Ctrl+Z desfaz`)
-    } catch (err) { toast('error', (err as Error).message) }
+    } catch (err) { toast('error', errorMessage(err)) }
   }
   const classifier = el.type === 'class' || el.type === 'interface'
   const parent = el.parent_id ? diagram.elements.find((e) => e.id === el.parent_id) : undefined
@@ -366,9 +367,9 @@ function LiteralsEditor({ literals, onCommit }: { literals: string[]; onCommit: 
 function RelationEditor({ diagram, rel, onClose }: { diagram: UMLDiagram; rel: UMLRelation; onClose: () => void }) {
   const toast = useToast()
   const patch = (p: Partial<UMLRelation>) =>
-    api.updateUMLRelation(diagram.id, rel.id, p).catch((err: unknown) => toast('error', (err as Error).message))
+    api.updateUMLRelation(diagram.id, rel.id, p).catch((err: unknown) => toast('error', errorMessage(err)))
   const remove = async () => {
-    try { await api.deleteUMLRelation(diagram.id, rel.id); onClose() } catch (err) { toast('error', (err as Error).message) }
+    try { await api.deleteUMLRelation(diagram.id, rel.id); onClose() } catch (err) { toast('error', errorMessage(err)) }
   }
   const name = (id: string) => diagram.elements.find((e) => e.id === id)?.name || '·'
   const ends = ['association', 'directed_association', 'aggregation', 'composition'].includes(rel.type)
@@ -381,7 +382,7 @@ function RelationEditor({ diagram, rel, onClose }: { diagram: UMLDiagram; rel: U
     ;[msgs[i], msgs[j]] = [msgs[j], msgs[i]]
     const order = new Map(msgs.map((m, k) => [m.id, k + 1]))
     const relations = diagram.relations.map((r) => (order.has(r.id) ? { ...r, order: order.get(r.id) } : r))
-    try { await api.saveUML({ ...diagram, relations }) } catch (err) { toast('error', (err as Error).message) }
+    try { await api.saveUML({ ...diagram, relations }) } catch (err) { toast('error', errorMessage(err)) }
   }
 
   return (

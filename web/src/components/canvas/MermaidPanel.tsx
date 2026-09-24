@@ -4,7 +4,9 @@
 import { ArrowDownToLine, Copy, Import } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
+import { errorMessage } from '../../lib/errors'
 import { mermaidErrorMessage, renderMermaid } from '../../lib/mermaid'
+import { platform } from '../../lib/platform'
 import type { Snapshot } from '../../lib/types'
 import { Button, Modal, Textarea, useToast } from '../ui'
 
@@ -40,23 +42,15 @@ export function MermaidPanel({ open, onClose, snapshot }: {
       toast('success', `Importado: ${diagram.nodes.length} componentes, ${diagram.edges.length} conexões · Ctrl+Z desfaz`)
       onClose()
       setSource('')
-    } catch (err) { toast('error', (err as Error).message) } finally { setImporting(false) }
+    } catch (err) { toast('error', errorMessage(err)) } finally { setImporting(false) }
   }
 
   const copy = async () => {
-    await navigator.clipboard.writeText(snapshot.mermaid)
+    await platform.copyText(snapshot.mermaid)
     toast('success', 'Mermaid copiado — cole no README do projeto')
   }
 
-  const download = () => {
-    const blob = new Blob([snapshot.mermaid], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'macro.mermaid'
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 2000)
-  }
+  const download = () => void platform.saveFile(new Blob([snapshot.mermaid], { type: 'text/plain' }), 'macro.mermaid')
 
   return (
     <Modal open={open} onClose={onClose} wide title="Mermaid"

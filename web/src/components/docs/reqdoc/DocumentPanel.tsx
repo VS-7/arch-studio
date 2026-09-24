@@ -13,6 +13,9 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { api } from '../../../lib/api'
+import { errorMessage } from '../../../lib/errors'
+import { slugify } from '../../../lib/format'
+import { platform } from '../../../lib/platform'
 import { useStored } from '../../../lib/storage'
 import type { ReqDocument, Snapshot } from '../../../lib/types'
 import { Button, EmptyState, IconAction, useToast } from '../../ui'
@@ -28,20 +31,8 @@ import { DOC_CSS, documentHtml, printDocument } from './html'
 const PAGE_PX = (21 / 2.54) * 96
 const ZOOM_STEPS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
 
-function download(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 4000)
-}
-
 function fileBase(doc: ReqDocument): string {
-  const slug = doc.project.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-  return `documento-de-requisitos-${slug || 'projeto'}`
+  return `documento-de-requisitos-${slugify(doc.project, 'projeto')}`
 }
 
 /** Lacunas que empobrecem o documento, calculadas a partir do projeto. */
@@ -86,7 +77,7 @@ export function DocumentPanel({ snapshot }: { snapshot: Snapshot }) {
       setDoc(await api.reqDocument())
       setError(null)
     } catch (err) {
-      setError((err as Error).message)
+      setError(errorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -129,13 +120,11 @@ export function DocumentPanel({ snapshot }: { snapshot: Snapshot }) {
 
   const run = async (label: string, fn: () => Promise<void>) => {
     setBusy(label)
-    try { await fn() } catch (err) { toast('error', (err as Error).message) } finally { setBusy(null) }
+    try { await fn() } catch (err) { toast('error', errorMessage(err)) } finally { setBusy(null) }
   }
 
   const exportMarkdown = () => run('md', async () => {
-    const res = await fetch(api.reqDocumentMarkdownUrl(true))
-    if (!res.ok) throw new Error('falha ao gerar o Markdown')
-    download(await res.blob(), `${fileBase(doc!)}.md`)
+    await platform.saveFile(await api.reqDocumentMarkdown(true), `${fileBase(doc!)}.md`)
     toast('success', 'Markdown exportado com os diagramas embutidos')
   })
   const exportPdf = () => run('pdf', async () => {
@@ -143,7 +132,7 @@ export function DocumentPanel({ snapshot }: { snapshot: Snapshot }) {
     toast('info', 'Escolha "Salvar como PDF" na janela de impressão')
   })
   const exportDocx = () => run('docx', async () => {
-    download(await buildDocx(doc!), `${fileBase(doc!)}.docx`)
+    await platform.saveFile(await buildDocx(doc!), `${fileBase(doc!)}.docx`)
     toast('success', 'DOCX exportado')
   })
   const saveToProject = () => run('save', async () => {

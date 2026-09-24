@@ -10,20 +10,20 @@ import {
   addEdge, useEdgesState, useNodesState,
   type Connection, type Edge, type NodeChange, type OnConnect, type ReactFlowInstance,
 } from '@xyflow/react'
-import {
-  ClipboardPaste, Copy, CopyPlus, Maximize, Plus, Scissors, SquareDashedMousePointer, Trash2,
-} from 'lucide-react'
+import { ClipboardPaste, Maximize, Plus, SquareDashedMousePointer, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../../lib/api'
 import { addConnectedNode, copyArch, defaultProtocol, pasteArch } from '../../lib/archOps'
 import { clipboard } from '../../lib/clipboard'
+import { errorMessage } from '../../lib/errors'
 import { NODE_META, NODE_TYPES, nodeMeta } from '../../lib/nodeMeta'
 import type { Tool } from '../../lib/tools'
-import type { ArchEdge, ArchNode, Diagram, NodeType } from '../../lib/types'
+import type { ArchNode, Diagram, NodeType } from '../../lib/types'
 import { useToast } from '../ui'
 import { ArchActionsContext, ArchNodeView, GroupNodeView, type ArchFlowNode, type ArchNodeActions } from './ArchNodeView'
 import { CanvasControls } from './CanvasControls'
 import { CanvasMenu, type CanvasCommands, type CanvasMenuItem, type CanvasMenuState } from './CanvasMenu'
+import { FLOW_DEFAULTS, editMenuItems, isFreshViewport, markSelected, useExternalSelection, useRunCommand } from './flowShared'
 
 const nodeTypes = { arch: ArchNodeView, group: GroupNodeView }
 
@@ -44,7 +44,8 @@ interface Props {
   spotlight?: Set<string> | null
   selectedId: string | null
   onSelect: (id: string | null, kind: 'node' | 'edge') => void
-  onReady?: (handle: CanvasHandle) => void
+  /** Recebe os comandos do canvas; null ao desmontar. */
+  onReady?: (handle: CanvasHandle | null) => void
   interactive?: boolean
   onDirty?: () => void
   /** Ferramenta da Toolbox: com um tipo de componente ativo, clicar no canvas o cria. */
@@ -122,9 +123,10 @@ export function ArchCanvas({
   tool, onToolDone, onZoom, onSelectionChange,
 }: Props) {
   const toast = useToast()
+  const run = useRunCommand()
   // Callbacks do Shell mudam a cada render; ref mantém os comandos estáveis.
-  const cb = useRef({ onSelect, onSelectionChange, onDirty, onToolDone })
-  cb.current = { onSelect, onSelectionChange, onDirty, onToolDone }
+  const cb = useRef({ onSelect, onSelectionChange, onDirty, onToolDone, onReady })
+  cb.current = { onSelect, onSelectionChange, onDirty, onToolDone, onReady }
   const [nodes, setNodes, onNodesChange] = useNodesState<ArchFlowNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [instance, setInstance] = useState<ReactFlowInstance<ArchFlowNode, Edge> | null>(null)
@@ -161,14 +163,10 @@ export function ArchCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature, diagram, executive, highlight, spotlight, setNodes, setEdges])
 
-  // Seleção vinda de fora (Model Explorer) reflete no canvas.
-  useEffect(() => {
-    if (selectedId === null) return
-    const isEdge = diagramRef.current.edges.some((e) => e.id === selectedId)
-    selection.current = isEdge ? { nodes: [], edges: [selectedId] } : { nodes: [selectedId], edges: [] }
-    setNodes((ns) => ns.map((n) => (n.selected === (n.id === selectedId) ? n : { ...n, selected: n.id === selectedId })))
-    setEdges((es) => es.map((e) => (e.selected === (e.id === selectedId) ? e : { ...e, selected: e.id === selectedId })))
-  }, [selectedId, setNodes, setEdges])
+  useExternalSelection(selectedId, setNodes, setEdges, (id) => {
+    const isEdge = diagramRef.current.edges.some((e) => e.id === id)
+    selection.current = isEdge ? { nodes: [], edges: [id] } : { nodes: [id], edges: [] }
+  })
 
   const onFlowSelectionChange = useCallback(({ nodes: ns, edges: es }: { nodes: ArchFlowNode[]; edges: Edge[] }) => {
     selection.current = { nodes: ns.map((n) => n.id), edges: es.map((e) => e.id) }
@@ -185,7 +183,7 @@ export function ArchCanvas({
       return true
     } catch (err) {
       pendingSelect.current = null
-      toast('error', (err as Error).message)
+      toast('error', errorMessage(err))
       return false
     }
   }, [toast])
@@ -210,7 +208,7 @@ export function ArchCanvas({
     setEdges((eds) => addEdge({ ...connection, type: 'smoothstep', label: protocol }, eds))
     api.addEdge({ source_id: connection.source, target_id: connection.target, protocol })
       .then(() => toast('success', `${sourceLabel} → ${targetNode?.data.label ?? ''} conectados via ${protocol}`))
-      .catch((err: unknown) => toast('error', (err as Error).message))
+      .catch((err: unknown) => toast('error', errorMessage(err)))
   }, [diagram.nodes, setEdges, toast])
 
   const createAtFlow = useCallback((type: NodeType, p: { x: number; y: number }) => {
@@ -218,7 +216,7 @@ export function ArchCanvas({
     const position = { x: Math.round(p.x - 110), y: Math.round(p.y - 55) }
     api.addNode({ label: nextLabel(diagramRef.current, type), type, tier: meta.tier, position })
       .then((node: ArchNode) => { pendingSelect.current = [node.id]; cb.current.onSelect(node.id, 'node'); toast('success', `Componente "${node.data.label}" criado — renomeie no Editor`) })
-      .catch((err: unknown) => toast('error', (err as Error).message))
+      .catch((err: unknown) => toast('error', errorMessage(err)))
   }, [toast])
 
   const createAt = useCallback((type: NodeType, screen: { x: number; y: number }) => {
@@ -292,9 +290,9 @@ export function ArchCanvas({
     })
   }, [instance, onReady, commands])
 
-  const run = useCallback((fn: () => Promise<string | null> | string | null) => {
-    void Promise.resolve(fn()).then((msg) => { if (msg) toast('success', `${msg} · Ctrl+Z desfaz`) })
-  }, [toast])
+  // Ao desmontar (troca de aba, Modo Pitch), o Shell não pode continuar com
+  // comandos de um canvas que sumiu: Del apagaria a seleção antiga.
+  useEffect(() => () => cb.current.onReady?.(null), [])
 
   /* Menus de contexto ------------------------------------------------------------- */
 
@@ -304,13 +302,7 @@ export function ArchCanvas({
       return { type: 'item' as const, label: NODE_META[type].label, icon: <Icon />, onSelect: () => onPick(type) }
     }), [])
 
-  const editItems = useCallback((): CanvasMenuItem[] => [
-    { type: 'item', label: 'Recortar', icon: <Scissors />, shortcut: 'Ctrl+X', onSelect: () => run(commands.cut) },
-    { type: 'item', label: 'Copiar', icon: <Copy />, shortcut: 'Ctrl+C', onSelect: () => run(commands.copy) },
-    { type: 'item', label: 'Duplicar', icon: <CopyPlus />, shortcut: 'Ctrl+D', onSelect: () => run(commands.duplicate) },
-    { type: 'separator' },
-    { type: 'item', label: 'Excluir', icon: <Trash2 />, shortcut: 'Del', destructive: true, onSelect: () => run(commands.deleteSelected) },
-  ], [commands, run])
+  const editItems = useCallback(() => editMenuItems(commands, run), [commands, run])
 
   const openPaneMenu = useCallback((clientX: number, clientY: number, title?: string) => {
     if (!instance || !interactive) return
@@ -349,9 +341,7 @@ export function ArchCanvas({
 
   const selectOnly = useCallback((sel: { nodes: string[]; edges: string[] }) => {
     selection.current = sel
-    const set = new Set([...sel.nodes, ...sel.edges])
-    setNodes((ns) => ns.map((n) => ({ ...n, selected: set.has(n.id) })))
-    setEdges((es) => es.map((e) => ({ ...e, selected: set.has(e.id) })))
+    markSelected(setNodes, setEdges, new Set([...sel.nodes, ...sel.edges]))
     cb.current.onSelectionChange?.(sel)
   }, [setEdges, setNodes])
 
@@ -382,12 +372,9 @@ export function ArchCanvas({
     [],
   )
 
-  // Viewport nunca ajustado pelo usuário (0,0,1): enquadra o diagrama inteiro.
-  const fitOnMount = useMemo(() => {
-    const vp = diagram.viewport
-    return !vp || (vp.x === 0 && vp.y === 0 && (!vp.zoom || vp.zoom === 1))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // Só na montagem: depois o viewport é do usuário.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const fitOnMount = useMemo(() => isFreshViewport(diagram.viewport), [])
 
   return (
     <ArchActionsContext.Provider value={actions}>
@@ -456,21 +443,15 @@ export function ArchCanvas({
         defaultViewport={defaultViewport}
         fitView={fitOnMount}
         fitViewOptions={{ padding: 0.15, maxZoom: 1.1 }}
+        {...FLOW_DEFAULTS}
         minZoom={0.15}
         maxZoom={2.5}
-        snapToGrid
         snapGrid={[20, 20]}
         nodesDraggable={interactive}
         nodesConnectable={interactive}
         elementsSelectable={interactive}
-        panOnScroll
         selectionOnDrag={interactive}
         panOnDrag={interactive ? [1, 2] : true}
-        multiSelectionKeyCode={['Control', 'Meta', 'Shift']}
-        selectionKeyCode={null}
-        deleteKeyCode={null}
-        zoomOnDoubleClick={false}
-        proOptions={{ hideAttribution: true }}
         className="h-full w-full"
       >
         {interactive && (
@@ -501,4 +482,3 @@ export function ArchCanvas({
   )
 }
 
-export type { ArchNode, ArchEdge }

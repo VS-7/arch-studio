@@ -7,6 +7,7 @@ import {
 import { useMemo, useState, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { nodeMeta } from '../../lib/nodeMeta'
+import { platform } from '../../lib/platform'
 import { tabKey, VIEW_LABEL, type TabRef, type ViewId } from '../../lib/tabs'
 import type { Selection } from '../../lib/tools'
 import type { Snapshot, UMLDiagram, UMLKind } from '../../lib/types'
@@ -185,7 +186,7 @@ function DiagramNode({ diagram, query, open, onToggle, active, selection, onOpen
           <ContextMenuItem onSelect={() => onOpen({ type: 'uml', id: diagram.id })}><Pencil />Abrir</ContextMenuItem>
           <ContextMenuItem onSelect={() => onRenameDiagram(diagram)}><Pencil />Renomear…</ContextMenuItem>
           <ContextMenuItem onSelect={() => onShowMermaid(diagram)}><Code2 />Ver Mermaid</ContextMenuItem>
-          <ContextMenuItem onSelect={() => void navigator.clipboard.writeText(diagram.file ?? diagram.id)}><Copy />Copiar caminho</ContextMenuItem>
+          <ContextMenuItem onSelect={() => void platform.copyText(diagram.file ?? diagram.id)}><Copy />Copiar caminho</ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem variant="destructive" onSelect={() => onDeleteDiagram(diagram)}><Trash2 />Excluir diagrama</ContextMenuItem>
         </ContextMenuContent>

@@ -6,9 +6,10 @@
 // o formato determinístico que o parser Go e o Git dependem (RNF001). O usuário
 // ganha edição em blocos de verdade — e o arquivo continua estável.
 
-import { BookOpen, Code2, FileText, Pencil, Plus, Trash2 } from 'lucide-react'
+import { BookOpen, Code2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
+import { errorMessage } from '../../lib/errors'
 import type { Requirement, Snapshot } from '../../lib/types'
 import { renderMarkdown } from '../../lib/markdown'
 import { PRIORITIES, RNF_CATEGORIES } from '../../lib/requirements'
@@ -42,7 +43,7 @@ export function RequirementsPanel({ snapshot }: { snapshot: Snapshot }) {
       await api.saveRequirementsRaw(raw)
       toast('success', 'docs/requisitos.md salvo')
       setRawMode(false)
-    } catch (err) { toast('error', (err as Error).message) }
+    } catch (err) { toast('error', errorMessage(err)) }
   }
 
   const saveOverview = async () => {
@@ -56,7 +57,7 @@ export function RequirementsPanel({ snapshot }: { snapshot: Snapshot }) {
       )
       await api.saveRequirementsRaw(next)
       toast('success', 'Visão geral atualizada')
-    } catch (err) { toast('error', (err as Error).message) } finally { setSavingOverview(false) }
+    } catch (err) { toast('error', errorMessage(err)) } finally { setSavingOverview(false) }
   }
 
   const save = async (req: Requirement) => {
@@ -64,7 +65,7 @@ export function RequirementsPanel({ snapshot }: { snapshot: Snapshot }) {
       await api.upsertRequirement(req)
       toast('success', `${req.id || 'Requisito'} salvo`)
       setEditing(null)
-    } catch (err) { toast('error', (err as Error).message) }
+    } catch (err) { toast('error', errorMessage(err)) }
   }
 
   const remove = async (id: string) => {
@@ -72,7 +73,7 @@ export function RequirementsPanel({ snapshot }: { snapshot: Snapshot }) {
     try {
       await api.deleteRequirement(id)
       toast('success', `${id} removido`)
-    } catch (err) { toast('error', (err as Error).message) }
+    } catch (err) { toast('error', errorMessage(err)) }
   }
 
   const functional = snapshot.requirements.requirements.filter((r) => r.type === 'RF')
@@ -238,4 +239,3 @@ function RequirementModal({ requirement, snapshot, onClose, onSave }: {
   )
 }
 
-export { FileText }
