@@ -3,8 +3,10 @@
 // exportação em Markdown, PDF e DOCX. Todo o resto — requisitos, casos de uso,
 // diagramas, arquitetura, ADRs e contratos — é puxado do projeto na hora.
 //
-// Layout de editor: a folha A4 ocupa a área central (com zoom e "ajustar à
-// largura") e um painel lateral traz a estrutura navegável e as pendências.
+// Layout de editor: as folhas A4 já paginadas (capa, depois páginas com
+// cabeçalho e rodapé numerado) ocupam a área central, com zoom e "ajustar à
+// largura"; um painel lateral traz a estrutura navegável e as pendências. O
+// PDF imprime exatamente essas folhas.
 
 import {
   AlertTriangle, CheckCircle2, ChevronDown, FileDown, FileText, FileType2, ListTree, Loader2, PanelRight, Printer,
@@ -25,7 +27,8 @@ import {
 import { ViewFrame } from '../../shell/ViewFrame'
 import { DocumentMetaEditor } from './DocumentMetaEditor'
 import { buildDocx } from './docx'
-import { DOC_CSS, documentHtml, printDocument } from './html'
+import { DOC_CSS, printDocument } from './html'
+import { paginateDocument, type PagedDocument } from './paginate'
 
 /** Largura da folha A4 (21 cm) em pixels CSS. */
 const PAGE_PX = (21 / 2.54) * 96
@@ -93,6 +96,7 @@ export function DocumentPanel({ snapshot, onReorganize }: {
 }) {
   const toast = useToast()
   const [doc, setDoc] = useState<ReqDocument | null>(null)
+  const [paged, setPaged] = useState<PagedDocument | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [metaOpen, setMetaOpen] = useState(false)
@@ -121,8 +125,19 @@ export function DocumentPanel({ snapshot, onReorganize }: {
     return () => window.clearTimeout(t)
   }, [load, snapshot])
 
+  // Pagina em folhas A4 sempre que o documento muda. As folhas anteriores
+  // continuam visíveis até as novas ficarem prontas (sem piscar).
+  useEffect(() => {
+    if (!doc) return
+    let cancelled = false
+    paginateDocument(doc)
+      .then((p) => { if (!cancelled) setPaged(p) })
+      .catch((err) => { if (!cancelled) setError(errorMessage(err)) })
+    return () => { cancelled = true }
+  }, [doc])
+
   // "Ajustar à largura": a folha acompanha a largura disponível da área central.
-  const hasDoc = doc !== null
+  const hasDoc = paged !== null
   useEffect(() => {
     const el = desk.current
     if (!el) return
@@ -137,7 +152,6 @@ export function DocumentPanel({ snapshot, onReorganize }: {
     return () => ro.disconnect()
   }, [hasDoc])
 
-  const html = useMemo(() => (doc ? documentHtml(doc) : ''), [doc])
   const pending = useMemo(() => pendencies(snapshot), [snapshot])
   const scale = zoom === 'fit' ? fitZoom : zoom
 
@@ -160,7 +174,7 @@ export function DocumentPanel({ snapshot, onReorganize }: {
     toast('success', 'Markdown exportado com os diagramas embutidos')
   })
   const exportPdf = () => run('pdf', async () => {
-    await printDocument(doc!)
+    await printDocument(doc!, paged!.html)
     toast('info', 'Escolha "Salvar como PDF" na janela de impressão')
   })
   const exportDocx = () => run('docx', async () => {
@@ -172,10 +186,10 @@ export function DocumentPanel({ snapshot, onReorganize }: {
     toast('success', `Gravado em ${res.file} com ${res.images.length} diagrama(s) — versionável no Git`)
   })
 
-  if (!doc) {
+  if (!doc || !paged) {
     return (
       <ViewFrame icon={FileText} title="Documento de Requisitos" meta={snapshot.manifest.project_name}>
-        {loading ? (
+        {loading || (doc && !error) ? (
           <div className="flex justify-center py-16"><Loader2 className="animate-spin text-muted-foreground" /></div>
         ) : (
           <EmptyState icon={AlertTriangle} title="Não foi possível gerar o documento" description={error ?? undefined}
@@ -194,7 +208,7 @@ export function DocumentPanel({ snapshot, onReorganize }: {
 
   return (
     <ViewFrame icon={FileText} title={`${doc.title} — ${doc.project}`}
-      meta={`Versão ${doc.version} · ${doc.date} · ${counts.rf} RF · ${counts.rnf} RNF · ${counts.cdu} casos de uso · ${counts.fig} figura(s)`}
+      meta={`Versão ${doc.version} · ${doc.date} · ${paged.pages} páginas · ${counts.rf} RF · ${counts.rnf} RNF · ${counts.cdu} casos de uso · ${counts.fig} figura(s)`}
       bodyClassName="flex overflow-hidden"
       actions={
         <>
@@ -238,11 +252,10 @@ export function DocumentPanel({ snapshot, onReorganize }: {
           </Button>
         </>
       }>
-      {/* Pré-visualização em "papel" — o mesmo HTML usado no PDF */}
+      {/* Folhas A4 paginadas — o mesmo HTML usado no PDF */}
       <div ref={desk} className="min-w-0 flex-1 overflow-auto bg-muted px-6 py-6 dark:bg-chrome-2">
         <style>{DOC_CSS}</style>
-        <div className="mx-auto w-[21cm] shadow-md ring-1 ring-black/5" style={{ zoom: scale }}
-          dangerouslySetInnerHTML={{ __html: html }} />
+        <div className="mx-auto w-[21cm]" style={{ zoom: scale }} dangerouslySetInnerHTML={{ __html: paged.html }} />
       </div>
 
       {sideOpen && (

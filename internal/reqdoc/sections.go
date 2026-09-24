@@ -306,12 +306,6 @@ func (g *gen) modelingSection(b *builder) {
 // 8 Arquitetura do sistema
 // ---------------------------------------------------------------------------
 
-var nodeTypeLabels = map[string]string{
-	"compute": "Serviço", "database": "Banco de dados", "cache": "Cache", "queue": "Fila",
-	"gateway": "Gateway", "storage": "Armazenamento", "client": "Cliente",
-	"external_service": "Serviço externo",
-}
-
 func (g *gen) architecture(b *builder) {
 	b.section(secArchitecture)
 	if len(g.nodes) > 0 {
@@ -320,11 +314,7 @@ func (g *gen) architecture(b *builder) {
 		b.figure(MacroImageSrc, "Arquitetura de componentes", MacroDiagramID)
 		rows := [][]string{}
 		for _, n := range g.nodes {
-			typ := nodeTypeLabels[n.Type]
-			if typ == "" {
-				typ = n.Type
-			}
-			rows = append(rows, []string{orDash(n.Data.Label), typ, orDash(n.Data.Technology), orDash(n.Data.Description)})
+			rows = append(rows, []string{orDash(n.Data.Label), model.NodeTypeLabel(n.Type), orDash(n.Data.Technology), orDash(n.Data.Description)})
 		}
 		b.table([]string{"Componente", "Tipo", "Tecnologia", "Responsabilidade"}, rows)
 	}

@@ -91,7 +91,7 @@ O `init` cria uma arquitetura de exemplo funcional (Web App → Gateway → API 
 
 3. **Documentação que se escreve sozinha:**
    - Requisitos (RF/RNF), casos de uso com fluxos e critérios Given-When-Then, ADRs no formato Nygard — cada um na sua aba.
-   - **Documento de Requisitos formal** (capa, sumário, requisitos, CDUs, diagramas, rastreabilidade) montado a partir do projeto e exportado em **PDF, DOCX e Markdown**.
+   - **Documento de Requisitos formal** (capa, sumário, requisitos, CDUs, diagramas, rastreabilidade) montado a partir do projeto e exportado em **PDF, DOCX e Markdown**. A prévia mostra as folhas A4 já paginadas — capa com faixa de identidade, páginas com cabeçalho, rodapé "Página N de M" e sumário com os números das páginas — e o PDF imprime exatamente essas folhas; o DOCX sai com a mesma identidade (Arial 11 pt, títulos numerados em azul-marinho, tabelas com cabeçalho sombreado). O diagrama de arquitetura entra como figura de documento (notação C4, preto no branco), como os diagramas UML.
 
 4. **Nativo para agentes de IA (MCP):**
    - 29 ferramentas atômicas via stdio ou SSE, com as mesmas regras de uma edição humana.
@@ -155,7 +155,7 @@ IA → get_system_context → add_architecture_node → connect_nodes → upsert
 | `archcode-studio prd [--stack --granularity --no-tests]` | Compila `docs/ai-prd.md` e `.arch/tasks.json` |
 | `archcode-studio estimate [--margin --json --detailed]` | Esforço, custo e prazo |
 | `archcode-studio validate [--json --strict]` | Linter de arquitetura — sai com código 1 se houver erros (ótimo na CI) |
-| `archcode-studio export svg\|mermaid\|openapi\|proposal\|requirements` | Exportações (`--mode`, `--theme`, `--out`) |
+| `archcode-studio export svg\|mermaid\|openapi\|proposal\|requirements` | Exportações (`--mode`, `--theme`, `--style canvas\|document`, `--out`) |
 | `archcode-studio mcp-config` | Imprime a configuração MCP para o projeto |
 
 ---

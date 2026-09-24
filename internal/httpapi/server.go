@@ -691,6 +691,7 @@ func (s *Server) exportSVG(w http.ResponseWriter, r *http.Request) {
 		Dark:        q.Get("theme") == "dark",
 		Transparent: q.Get("transparent") == "1",
 		NoTitle:     q.Get("title") == "0",
+		Document:    q.Get("style") == "document",
 	})
 	if err != nil {
 		fail(w, http.StatusBadRequest, err)

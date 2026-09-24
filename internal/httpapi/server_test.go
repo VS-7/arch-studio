@@ -162,6 +162,13 @@ func TestExportSVGRespeitaModo(t *testing.T) {
 	if strings.Contains(string(body), "PostgreSQL") {
 		t.Error("modo executivo não deveria expor o banco marcado como interno")
 	}
+
+	// style=document: figura preto no branco, sem sombras nem ícones.
+	_, body = do(t, ts, "GET", "/api/export/svg?mode=engineering&theme=light&title=0&style=document", nil)
+	document := string(body)
+	if !strings.Contains(document, "«") || strings.Contains(document, "feDropShadow") || strings.Contains(document, "🗄") {
+		t.Error("style=document deveria usar estereótipos e dispensar sombras e ícones")
+	}
 }
 
 func TestPRDETarefasViaHTTP(t *testing.T) {

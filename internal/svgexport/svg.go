@@ -22,9 +22,14 @@ type Options struct {
 	Executive   bool
 	Dark        bool
 	Transparent bool
-	Padding     float64
-	Title       string
-	Subtitle    string
+	// Document desenha no estilo das figuras do Documento de Requisitos, o
+	// mesmo dos diagramas UML: fundo branco, traço preto, sem sombras, ícones
+	// ou cores por tipo, estereótipo «tipo» acima do nome (notação C4) e a
+	// fonte do documento. Ignora Dark.
+	Document bool
+	Padding  float64
+	Title    string
+	Subtitle string
 }
 
 type palette struct {
@@ -32,8 +37,23 @@ type palette struct {
 	nodeFill, nodeStroke                          map[string]string
 }
 
-func paletteFor(dark bool) palette {
-	if dark {
+// documentPalette é a paleta preto no branco das figuras do documento.
+var documentPalette = palette{
+	bg: "#ffffff", text: "#000000", muted: "#4d4d4d", edge: "#262626",
+	groupFill: "#f5f5f5", groupStroke: "#8c8c8c",
+	nodeFill: map[string]string{}, nodeStroke: map[string]string{},
+}
+
+const (
+	documentFont = "Arial, 'Liberation Sans', Helvetica, sans-serif"
+	canvasFont   = "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+)
+
+func paletteFor(opts Options) palette {
+	if opts.Document {
+		return documentPalette
+	}
+	if opts.Dark {
 		return palette{
 			bg: "#0b1020", text: "#e8edf7", muted: "#9aa7c2", edge: "#5b6b90",
 			groupFill: "#121a33", groupStroke: "#2b3a60",
@@ -135,9 +155,16 @@ func (b box) anchor(tx, ty float64) (float64, float64) {
 
 // Render produz o SVG completo do diagrama.
 func Render(d *model.Diagram, opts Options) string {
-	pal := paletteFor(opts.Dark)
+	pal := paletteFor(opts)
 	if opts.Padding <= 0 {
 		opts.Padding = 64
+		if opts.Document {
+			opts.Padding = 24
+		}
+	}
+	font := canvasFont
+	if opts.Document {
+		font = documentFont
 	}
 
 	visible := []model.Node{}
@@ -148,7 +175,7 @@ func Render(d *model.Diagram, opts Options) string {
 		visible = append(visible, n)
 	}
 	if len(visible) == 0 {
-		return emptySVG(pal, opts)
+		return emptySVG(pal, opts, font)
 	}
 
 	boxes := map[string]box{}
@@ -188,13 +215,16 @@ func Render(d *model.Diagram, opts Options) string {
 	height := maxY - minY + opts.Padding*2 + headerH
 
 	var b strings.Builder
-	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" width="%.0f" height="%.0f" viewBox="0 0 %.0f %.0f" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">`,
-		width, height, width, height)
+	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" width="%.0f" height="%.0f" viewBox="0 0 %.0f %.0f" font-family="%s">`,
+		width, height, width, height, font)
 	b.WriteString("\n<defs>\n")
 	fmt.Fprintf(&b, `<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="%s"/></marker>`, pal.edge)
 	b.WriteString("\n")
-	fmt.Fprintf(&b, `<filter id="shadow" x="-30%%" y="-30%%" width="160%%" height="160%%"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.18"/></filter>`)
-	b.WriteString("\n</defs>\n")
+	if !opts.Document {
+		fmt.Fprintf(&b, `<filter id="shadow" x="-30%%" y="-30%%" width="160%%" height="160%%"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.18"/></filter>`)
+		b.WriteString("\n")
+	}
+	b.WriteString("</defs>\n")
 
 	if !opts.Transparent {
 		fmt.Fprintf(&b, `<rect width="100%%" height="100%%" fill="%s"/>`, pal.bg)
@@ -218,8 +248,12 @@ func Render(d *model.Diagram, opts Options) string {
 			continue
 		}
 		bx := boxes[n.ID]
-		fmt.Fprintf(&b, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="16" fill="%s" stroke="%s" stroke-width="1.5" stroke-dasharray="6 4"/>`,
-			bx.x+offX, bx.y+offY, bx.w, bx.h, pal.groupFill, pal.groupStroke)
+		rx := 16.0
+		if opts.Document {
+			rx = 6
+		}
+		fmt.Fprintf(&b, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.0f" fill="%s" stroke="%s" stroke-width="1.5" stroke-dasharray="6 4"/>`,
+			bx.x+offX, bx.y+offY, bx.w, bx.h, rx, pal.groupFill, pal.groupStroke)
 		b.WriteString("\n")
 		fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" font-size="13" font-weight="600" fill="%s" letter-spacing="0.5">%s</text>`,
 			bx.x+offX+16, bx.y+offY+24, pal.muted, esc(strings.ToUpper(n.Data.Label)))
@@ -227,6 +261,10 @@ func Render(d *model.Diagram, opts Options) string {
 	}
 
 	// Arestas.
+	edgeWidth := 1.8
+	if opts.Document {
+		edgeWidth = 1.3
+	}
 	edges := append([]model.Edge(nil), d.Edges...)
 	sort.SliceStable(edges, func(i, j int) bool { return edges[i].ID < edges[j].ID })
 	for _, e := range edges {
@@ -259,8 +297,8 @@ func Render(d *model.Diagram, opts Options) string {
 		if strings.EqualFold(e.Data.Protocol, "webhook") || e.Animated {
 			dash = ` stroke-dasharray="7 5"`
 		}
-		fmt.Fprintf(&b, `<path d="%s" fill="none" stroke="%s" stroke-width="1.8"%s marker-end="url(#arrow)"/>`,
-			path, pal.edge, dash)
+		fmt.Fprintf(&b, `<path d="%s" fill="none" stroke="%s" stroke-width="%.1f"%s marker-end="url(#arrow)"/>`,
+			path, pal.edge, edgeWidth, dash)
 		b.WriteString("\n")
 
 		label := e.Label
@@ -291,12 +329,16 @@ func Render(d *model.Diagram, opts Options) string {
 			continue
 		}
 		bx := boxes[n.ID]
+		x, y := bx.x+offX, bx.y+offY
+		if opts.Document {
+			documentNode(&b, n, x, y, bx.w, bx.h, opts.Executive, pal)
+			continue
+		}
 		fill := pal.nodeFill[n.Type]
 		stroke := pal.nodeStroke[n.Type]
 		if fill == "" {
 			fill, stroke = pal.nodeFill["compute"], pal.nodeStroke["compute"]
 		}
-		x, y := bx.x+offX, bx.y+offY
 
 		fmt.Fprintf(&b, `<g filter="url(#shadow)"><rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="14" fill="%s" stroke="%s" stroke-width="2"/></g>`,
 			x, y, bx.w, bx.h, fill, stroke)
@@ -354,10 +396,60 @@ func Render(d *model.Diagram, opts Options) string {
 	return b.String()
 }
 
-func emptySVG(pal palette, opts Options) string {
+// documentNode desenha um componente na notação de documento (C4): caixa
+// branca de traço preto com o estereótipo «tipo», o nome em negrito, a
+// tecnologia entre colchetes e a responsabilidade, tudo centralizado. As
+// linhas que não couberem na altura da caixa são omitidas.
+func documentNode(b *strings.Builder, n model.Node, x, y, w, h float64, executive bool, pal palette) {
+	fmt.Fprintf(b, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="6" fill="%s" stroke="%s" stroke-width="1.2"/>`,
+		x, y, w, h, pal.bg, pal.edge)
+	b.WriteString("\n")
+
+	cx := x + w/2
+	// Largura em caracteres proporcional à caixa (~6,5 px por caractere a 12 px).
+	chars := int(math.Max(12, (w-20)/6.5))
+	type line struct {
+		text   string
+		size   float64
+		weight string
+		fill   string
+		step   float64
+	}
+	lines := []line{{"«" + strings.ToLower(model.NodeTypeLabel(n.Type)) + "»", 10.5, "400", pal.muted, 16}}
+	for _, l := range wrap(n.Data.Label, chars*12/14, 2) {
+		lines = append(lines, line{l, 14, "700", pal.text, 17})
+	}
+	if !executive && strings.TrimSpace(n.Data.Technology) != "" {
+		for _, l := range wrap("["+strings.TrimSpace(n.Data.Technology)+"]", chars, 1) {
+			lines = append(lines, line{l, 10.5, "400", pal.muted, 14})
+		}
+	}
+	for _, l := range wrap(n.Data.Description, chars, 2) {
+		lines = append(lines, line{l, 10.5, "400", pal.muted, 13})
+	}
+
+	ty := y + 18
+	for i, l := range lines {
+		// Não desenha linhas que ultrapassariam a base da caixa.
+		if i > 0 && ty > y+h-6 {
+			break
+		}
+		fmt.Fprintf(b, `<text x="%.1f" y="%.1f" font-size="%.1f" font-weight="%s" fill="%s" text-anchor="middle">%s</text>`,
+			cx, ty, l.size, l.weight, l.fill, esc(l.text))
+		b.WriteString("\n")
+		if i+1 < len(lines) {
+			ty += lines[i+1].step
+			if lines[i+1].size == 14 && l.size != 14 {
+				ty += 6 // respiro entre o estereótipo e o nome
+			}
+		}
+	}
+}
+
+func emptySVG(pal palette, opts Options, font string) string {
 	bg := pal.bg
 	if opts.Transparent {
 		bg = "none"
 	}
-	return fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="240" viewBox="0 0 640 240" font-family="Inter, sans-serif"><rect width="100%%" height="100%%" fill="%s"/><text x="320" y="120" text-anchor="middle" font-size="16" fill="%s">Nenhum componente para exportar</text></svg>`, bg, pal.muted)
+	return fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="240" viewBox="0 0 640 240" font-family="%s"><rect width="100%%" height="100%%" fill="%s"/><text x="320" y="120" text-anchor="middle" font-size="16" fill="%s">Nenhum componente para exportar</text></svg>`, font, bg, pal.muted)
 }

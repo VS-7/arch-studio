@@ -23,7 +23,7 @@ import (
 )
 
 // version é sobrescrita no build via -ldflags "-X main.version=…".
-var version = "1.1.0"
+var version = "1.2.0"
 
 const usage = `ArchCode Studio %s — arquitetura de software como código, local-first e nativa para IAs.
 

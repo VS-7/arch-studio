@@ -1,6 +1,9 @@
 // Exportação do Documento de Requisitos para .docx (Word/LibreOffice/Google Docs).
 //
-// Constrói o arquivo a partir dos mesmos blocos da pré-visualização. Os
+// Constrói o arquivo a partir dos mesmos blocos da pré-visualização, com a
+// mesma identidade visual (THEME): capa em seção própria com faixa de
+// identidade, páginas de conteúdo com cabeçalho e rodapé "Página N de M",
+// títulos numerados em azul-marinho e tabelas com cabeçalho sombreado. Os
 // diagramas chegam do servidor como SVG e são rasterizados em PNG no navegador
 // (o Word não aceita SVG sem uma versão PNG de apoio). A biblioteca `docx` é
 // carregada sob demanda para não pesar no carregamento do Studio.
@@ -8,21 +11,24 @@
 import { api } from '../../../lib/api'
 import type { DocBlock, PriorityLevel, ReqDocument } from '../../../lib/types'
 import { parseInline, type InlineRun } from './inline'
+import { BODY_MM, mmToPx, mmToTwip, THEME } from './theme'
 
 type Docx = typeof import('docx')
 type Block = import('docx').Paragraph | import('docx').Table
 
-const FONT = 'Arial'
-/** Largura útil da página A4 com margens de 2,2 cm, em pixels (96 dpi). */
-const MAX_IMAGE_WIDTH = 620
-const MAX_IMAGE_HEIGHT = 820
+const { font: FONT, color: C, size: S, page: P } = THEME
+/** Tamanho em meios-pontos, unidade das fontes no DOCX. */
+const pt = (points: number) => Math.round(points * 2)
+/** Largura útil da página em pixels (96 dpi), limite das figuras. */
+const MAX_IMAGE_WIDTH = Math.floor(mmToPx(BODY_MM.width))
+const MAX_IMAGE_HEIGHT = Math.floor(mmToPx(190))
 
 /** Ids de marcador do Word: começam com letra, só [A-Za-z0-9_], até 40 caracteres. */
 function bookmarkId(anchor: string): string {
   return ('b_' + anchor.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_')).slice(0, 40)
 }
 
-function runs(d: Docx, text: string, base: { bold?: boolean; size?: number } = {}) {
+function runs(d: Docx, text: string, base: { bold?: boolean; size?: number; color?: string } = {}) {
   return parseInline(text).map((r: InlineRun) => {
     const run = new d.TextRun({
       text: r.text,
@@ -30,6 +36,7 @@ function runs(d: Docx, text: string, base: { bold?: boolean; size?: number } = {
       italics: r.italic,
       font: r.code ? 'Courier New' : FONT,
       size: base.size,
+      color: base.color,
     })
     return r.anchor ? new d.InternalHyperlink({ anchor: bookmarkId(r.anchor), children: [run] }) : run
   })
@@ -65,13 +72,13 @@ function fit(width: number, height: number) {
   return { width: Math.round(width * k), height: Math.round(height * k) }
 }
 
-const BORDER = { style: 'single', size: 4, color: '9A9A9A' } as const
+const BORDER = { style: 'single', size: 6, color: C.tableBorder } as const
 
 function table(d: Docx, header: string[], rows: string[][]) {
   const cell = (text: string, head: boolean) => new d.TableCell({
-    children: [new d.Paragraph({ children: runs(d, text, { bold: head, size: 20 }) })],
-    shading: head ? { fill: 'EFEFEF', type: d.ShadingType.CLEAR, color: 'auto' } : undefined,
-    margins: { top: 60, bottom: 60, left: 100, right: 100 },
+    children: [new d.Paragraph({ children: runs(d, text, { bold: head, size: pt(S.table), color: head ? C.primary : undefined }) })],
+    shading: head ? { fill: C.tableHead, type: d.ShadingType.CLEAR, color: 'auto' } : undefined,
+    margins: { top: 50, bottom: 50, left: 100, right: 100 },
   })
   return new d.Table({
     width: { size: 100, type: d.WidthType.PERCENTAGE },
@@ -99,6 +106,21 @@ function priority(d: Docx, level: PriorityLevel) {
   })
 }
 
+/** "Figura 3 – Nome": rótulo em destaque, como na prévia. */
+function captionRuns(d: Docx, caption: string) {
+  const m = /^(Figura\s+\d+)(\s+[–-]\s+)(.*)$/s.exec(caption)
+  const size = pt(S.small)
+  if (!m) return runs(d, caption, { size, color: C.muted })
+  return [
+    new d.TextRun({ text: m[1], bold: true, size, color: C.primary, font: FONT }),
+    new d.TextRun({ text: m[2], size, color: C.muted, font: FONT }),
+    ...runs(d, m[3], { size, color: C.muted }),
+  ]
+}
+
+/** Parágrafo-rótulo ("**Fluxo de eventos principal**"), que fica junto da lista seguinte. */
+const isLabel = (text: string) => /^\*\*[^*]+\*\*:?$/.test(text.trim())
+
 async function blockToDocx(d: Docx, b: DocBlock, out: Block[]) {
   switch (b.type) {
     case 'heading': {
@@ -107,12 +129,16 @@ async function blockToDocx(d: Docx, b: DocBlock, out: Block[]) {
       out.push(new d.Paragraph({
         heading: levels[b.level - 1],
         keepNext: true,
+        border: b.level === 1 ? { bottom: { style: d.BorderStyle.SINGLE, size: 12, color: C.primary, space: 4 } } : undefined,
         children: [new d.Bookmark({ id: bookmarkId(b.id), children: runs(d, text) })],
       }))
       return
     }
     case 'paragraph':
-      out.push(new d.Paragraph({ alignment: d.AlignmentType.JUSTIFIED, spacing: { after: 120 }, children: runs(d, b.text) }))
+      out.push(new d.Paragraph({
+        alignment: d.AlignmentType.JUSTIFIED, spacing: { after: 120 }, keepNext: isLabel(b.text) || undefined,
+        children: runs(d, b.text),
+      }))
       return
     case 'list':
       // Numeração explícita: preserva a continuidade dos passos através dos subtítulos.
@@ -141,12 +167,13 @@ async function blockToDocx(d: Docx, b: DocBlock, out: Block[]) {
         out.push(new d.Paragraph({
           alignment: d.AlignmentType.CENTER,
           keepNext: true,
+          spacing: { before: 120 },
           children: [new d.ImageRun({ type: 'png', data: png.data, transformation: size })],
         }))
       }
       out.push(new d.Paragraph({
-        alignment: d.AlignmentType.CENTER, spacing: { after: 200 },
-        children: runs(d, b.caption, { size: 18 }),
+        alignment: d.AlignmentType.CENTER, spacing: { before: 80, after: 240 },
+        children: captionRuns(d, b.caption),
       }))
       return
     }
@@ -155,54 +182,132 @@ async function blockToDocx(d: Docx, b: DocBlock, out: Block[]) {
   }
 }
 
+/** Capa: faixa de identidade, título, projeto, versão, data e autores. */
+function cover(d: Docx, doc: ReqDocument): Block[] {
+  const none = { style: d.BorderStyle.NONE, size: 0, color: 'FFFFFF' }
+  const bandRun = (text: string) => new d.TextRun({
+    text: text.toUpperCase(), bold: true, color: C.bandText, size: pt(S.coverBand), font: FONT, characterSpacing: 40,
+  })
+  const band = new d.Table({
+    width: { size: 100, type: d.WidthType.PERCENTAGE },
+    borders: { top: none, bottom: none, left: none, right: none, insideHorizontal: none, insideVertical: none },
+    rows: [new d.TableRow({ children: [new d.TableCell({
+      shading: { fill: C.band, type: d.ShadingType.CLEAR, color: 'auto' },
+      margins: { top: 160, bottom: 160, left: 240, right: 240 },
+      children: [new d.Paragraph({
+        tabStops: [{ type: d.TabStopType.RIGHT, position: d.TabStopPosition.MAX }],
+        children: [bandRun(doc.project), new d.TextRun({ text: '\t', size: pt(S.coverBand) }), bandRun(doc.title)],
+      })],
+    })] })],
+  })
+  const center = (children: import('docx').TextRun[], spacing: { before?: number; after?: number }) =>
+    new d.Paragraph({ alignment: d.AlignmentType.CENTER, spacing, children })
+  const label = (text: string) => new d.TextRun({
+    text: text.toUpperCase(), size: pt(S.small), color: C.muted, font: FONT, characterSpacing: 25,
+  })
+  const value = (text: string, bold = false) => new d.TextRun({ text, size: pt(S.coverMeta), bold, font: FONT })
+
+  return [
+    band,
+    center([new d.TextRun({ text: doc.title, bold: true, size: pt(S.coverTitle), color: C.primary, font: FONT })], { before: 3400, after: 240 }),
+    // Filete de 60 mm centralizado, como na prévia.
+    new d.Paragraph({
+      spacing: { after: 240 },
+      indent: { left: mmToTwip((BODY_MM.width - 60) / 2), right: mmToTwip((BODY_MM.width - 60) / 2) },
+      border: { bottom: { style: d.BorderStyle.SINGLE, size: 12, color: C.accent, space: 1 } },
+      children: [],
+    }),
+    center([new d.TextRun({ text: doc.project, size: pt(S.coverProject), color: C.accent, font: FONT })], { after: 2000 }),
+    center([label('Versão')], { after: 40 }),
+    center([value(doc.version)], { after: 280 }),
+    center([label('Data')], { after: 40 }),
+    center([value(doc.date)], { after: 1300 }),
+    ...(doc.authors.length ? [
+      center([label(doc.authors.length > 1 ? 'Autores' : 'Autor')], { after: 40 }),
+      ...doc.authors.map((a) => center([value(a.toUpperCase(), true)], { after: 60 })),
+    ] : []),
+  ]
+}
+
 export async function buildDocx(doc: ReqDocument): Promise<Blob> {
   const d = await import('docx')
-  const center = (text: string, size: number, bold = false, after = 80) => new d.Paragraph({
-    alignment: d.AlignmentType.CENTER, spacing: { after },
-    children: [new d.TextRun({ text, size, bold, font: FONT })],
+  const plainTitle = (text: string) => new d.Paragraph({
+    alignment: d.AlignmentType.CENTER, spacing: { after: 240 }, keepNext: true,
+    children: [new d.TextRun({ text, size: pt(S.plainTitle), bold: true, color: C.primary, font: FONT })],
   })
+  const running = (size: number) => ({ size: pt(size), color: C.muted, font: FONT })
 
-  const children: Block[] = [
-    new d.Paragraph({ spacing: { before: 3600 }, children: [] }),
-    center(doc.title, 52, true, 120),
-    center(doc.project, 40, false, 2400),
-    center(doc.date, 24),
-    center(`Versão ${doc.version}`, 24, false, 1200),
-    ...doc.authors.map((a) => center(a.toUpperCase(), 24, true)),
-    new d.Paragraph({ children: [new d.PageBreak()] }),
-    center('Histórico de Alterações', 28, true, 240),
+  const header = new d.Header({ children: [new d.Paragraph({
+    tabStops: [{ type: d.TabStopType.RIGHT, position: d.TabStopPosition.MAX }],
+    border: { bottom: { style: d.BorderStyle.SINGLE, size: 4, color: C.rule, space: 4 } },
+    children: [
+      new d.TextRun({ text: doc.title, bold: true, ...running(S.running), color: C.primary }),
+      new d.TextRun({ text: ` — ${doc.project}\tVersão ${doc.version}`, ...running(S.running) }),
+    ],
+  })] })
+  const footer = new d.Footer({ children: [new d.Paragraph({
+    tabStops: [{ type: d.TabStopType.RIGHT, position: d.TabStopPosition.MAX }],
+    border: { top: { style: d.BorderStyle.SINGLE, size: 4, color: C.rule, space: 4 } },
+    children: [
+      new d.TextRun({ text: `${doc.project}\t`, ...running(S.running) }),
+      new d.TextRun({ children: ['Página ', d.PageNumber.CURRENT, ' de ', d.PageNumber.TOTAL_PAGES], ...running(S.running) }),
+    ],
+  })] })
+
+  const body: Block[] = [
+    plainTitle('Histórico de Alterações'),
     table(d, ['Data', 'Versão', 'Descrição', 'Autor'], doc.history.map((h) => [h.date, h.version, h.description, h.author])),
     new d.Paragraph({ children: [new d.PageBreak()] }),
-    center('Conteúdo', 28, true, 240),
+    plainTitle('Sumário'),
     // Sumário estático com links internos: não depende de "atualizar campos" no Word.
     ...doc.toc.map((t) => new d.Paragraph({
       indent: { left: (t.level - 1) * 360 },
       spacing: { after: 40, before: t.level === 1 ? 120 : 0 },
       children: [new d.InternalHyperlink({
         anchor: bookmarkId(t.id),
-        children: [new d.TextRun({ text: `${t.number}  ${t.title}`, bold: t.level === 1, font: FONT })],
+        children: [new d.TextRun({
+          text: `${t.number}  ${t.title}`, bold: t.level === 1, color: t.level === 1 ? C.primary : undefined, font: FONT,
+        })],
       })],
     })),
   ]
-  for (const block of doc.blocks) await blockToDocx(d, block, children)
+  for (const block of doc.blocks) await blockToDocx(d, block, body)
+
+  const margin = {
+    top: mmToTwip(P.top), bottom: mmToTwip(P.bottom), left: mmToTwip(P.left), right: mmToTwip(P.right),
+    header: mmToTwip(P.header), footer: mmToTwip(P.footer),
+  }
+  const headingStyle = (id: string, name: string, size: number, color: string, before: number, after: number, outlineLevel: number) => ({
+    id, name, basedOn: 'Normal', next: 'Normal', quickFormat: true,
+    run: { size: pt(size), bold: true, color, font: FONT },
+    paragraph: { spacing: { before, after }, keepNext: true, outlineLevel },
+  })
 
   const file = new d.Document({
     creator: doc.authors.join(', ') || 'ArchCode Studio',
     title: `${doc.title} - ${doc.project}`,
     description: 'Gerado pelo ArchCode Studio',
     styles: {
-      default: { document: { run: { font: FONT, size: 22 }, paragraph: { spacing: { line: 300 } } } },
+      default: { document: { run: { font: FONT, size: pt(S.body), color: C.text }, paragraph: { spacing: { line: Math.round(THEME.lineHeight * 240) } } } },
       paragraphStyles: [
-        { id: 'Heading1', name: 'Heading 1', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { size: 32, bold: true, font: FONT }, paragraph: { spacing: { before: 360, after: 160 } } },
-        { id: 'Heading2', name: 'Heading 2', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { size: 27, bold: true, font: FONT }, paragraph: { spacing: { before: 300, after: 120 } } },
-        { id: 'Heading3', name: 'Heading 3', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { size: 24, bold: true, font: FONT }, paragraph: { spacing: { before: 240, after: 100 } } },
-        { id: 'Heading4', name: 'Heading 4', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { size: 22, bold: true, font: FONT }, paragraph: { spacing: { before: 200, after: 80 } } },
+        headingStyle('Heading1', 'Heading 1', S.h1, C.primary, 0, 240, 0),
+        headingStyle('Heading2', 'Heading 2', S.h2, C.accent, 280, 120, 1),
+        headingStyle('Heading3', 'Heading 3', S.h3, C.accent, 240, 100, 2),
+        headingStyle('Heading4', 'Heading 4', S.h4, C.primary, 200, 80, 3),
       ],
     },
-    sections: [{
-      properties: { page: { margin: { top: 1418, bottom: 1418, left: 1247, right: 1247 } } },
-      children,
-    }],
+    sections: [
+      // Capa: seção própria, com margens de capa e sem cabeçalho nem rodapé.
+      {
+        properties: { page: { margin: { ...margin, top: mmToTwip(P.cover.band), left: mmToTwip(P.cover.inset), right: mmToTwip(P.cover.inset) } } },
+        children: cover(d, doc),
+      },
+      // Conteúdo: começa em página nova, numeração contínua (a capa é a página 1, sem número).
+      {
+        properties: { type: d.SectionType.NEXT_PAGE, page: { margin } },
+        headers: { default: header }, footers: { default: footer }, children: body,
+      },
+    ],
   })
   return d.Packer.toBlob(file)
 }

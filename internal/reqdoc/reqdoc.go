@@ -46,8 +46,10 @@ const (
 // de arquitetura (os demais usam o id do diagrama UML).
 const MacroDiagramID = "macro"
 
-// MacroImageSrc é a rota que renderiza o diagrama macro para o documento.
-const MacroImageSrc = "/api/export/svg?mode=engineering&theme=light&title=0"
+// MacroImageSrc é a rota que renderiza o diagrama macro para o documento, no
+// estilo de figura de documento (style=document): fundo branco, traço preto,
+// sem ícones nem sombras, como os diagramas UML.
+const MacroImageSrc = "/api/export/svg?mode=engineering&theme=light&title=0&style=document"
 
 // UMLImageSrc devolve a rota do SVG de um diagrama UML.
 func UMLImageSrc(id string) string { return "/api/export/uml/" + url.PathEscape(id) + ".svg" }

@@ -137,10 +137,11 @@ func figureFile(b reqdoc.Block) string {
 	return b.Diagram + ".svg"
 }
 
-// renderFigure produz o SVG de uma figura do documento (tema claro).
+// renderFigure produz o SVG de uma figura do documento (tema claro, estilo de
+// figura de documento para a arquitetura).
 func renderFigure(snap *store.Snapshot, b reqdoc.Block) ([]byte, error) {
 	if b.Diagram == reqdoc.MacroDiagramID {
-		return []byte(svgexport.Render(snap.Diagram, svgexport.Options{})), nil
+		return []byte(svgexport.Render(snap.Diagram, svgexport.Options{Document: true})), nil
 	}
 	for i := range snap.UMLDiagrams {
 		if snap.UMLDiagrams[i].ID == b.Diagram {

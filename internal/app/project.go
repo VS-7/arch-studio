@@ -46,6 +46,8 @@ type DiagramSVGOptions struct {
 	Dark        bool
 	Transparent bool
 	NoTitle     bool
+	// Document usa o estilo de figura de documento (ver svgexport.Options).
+	Document bool
 }
 
 // DiagramSVG desenha o diagrama macro e sugere um nome de arquivo.
@@ -55,7 +57,7 @@ func (a *App) DiagramSVG(o DiagramSVGOptions) (svg, filename string, err error) 
 		return "", "", err
 	}
 	opts := svgexport.Options{
-		Executive: o.Executive, Dark: o.Dark, Transparent: o.Transparent,
+		Executive: o.Executive, Dark: o.Dark, Transparent: o.Transparent, Document: o.Document,
 		Title: snap.Manifest.ProjectName, Subtitle: snap.Manifest.Description,
 	}
 	if o.NoTitle {

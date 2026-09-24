@@ -77,6 +77,23 @@ var NodeTypes = []string{
 	"storage", "client", "external_service", "group",
 }
 
+// NodeTypeLabels são os nomes em português dos tipos de componente, usados
+// nas figuras e tabelas do Documento de Requisitos.
+var NodeTypeLabels = map[string]string{
+	"compute": "Serviço", "database": "Banco de dados", "cache": "Cache", "queue": "Fila",
+	"gateway": "Gateway", "storage": "Armazenamento", "client": "Cliente",
+	"external_service": "Serviço externo", "group": "Grupo",
+}
+
+// NodeTypeLabel devolve o nome em português do tipo (ou o próprio tipo,
+// quando desconhecido).
+func NodeTypeLabel(t string) string {
+	if label, ok := NodeTypeLabels[t]; ok {
+		return label
+	}
+	return t
+}
+
 // Tiers de arquitetura, usados na ordenação topológica do ai-prd.md.
 var Tiers = []string{"data", "domain", "backend", "integration", "frontend", "devops"}
 

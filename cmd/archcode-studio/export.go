@@ -24,6 +24,7 @@ func cmdExport(args []string) error {
 	mode := fs.String("mode", "engineering", "svg: executive | engineering")
 	theme := fs.String("theme", "light", "svg: light | dark")
 	transparent := fs.Bool("transparent", false, "svg: fundo transparente")
+	style := fs.String("style", "canvas", "svg: canvas | document (figura de documento, preto no branco)")
 	client := fs.String("client", "", "proposal: nome do cliente")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -40,6 +41,7 @@ func cmdExport(args []string) error {
 			Executive:   *mode == "executive",
 			Dark:        *theme == "dark",
 			Transparent: *transparent,
+			Document:    *style == "document",
 		})
 		if err != nil {
 			return err
