@@ -37,8 +37,9 @@ func cmdInit(args []string) error {
 		fmt.Printf("  mantido  %s\n", f)
 	}
 	fmt.Printf("\nPróximos passos:\n")
-	fmt.Printf("  1. archcode-studio serve          # abrir o canvas no browser\n")
-	fmt.Printf("  2. archcode-studio mcp-config     # conectar seu agente de IA\n")
-	fmt.Printf("  3. archcode-studio prd            # compilar o blueprint para IAs\n")
+	fmt.Printf("  1. archcode-studio serve                 # abrir o canvas e o planejamento no browser\n")
+	fmt.Printf("  2. archcode-studio agent setup claude    # MCP, hooks de retomada e skills no Claude Code\n")
+	fmt.Printf("  3. archcode-studio sprint plan --goal \"…\" --apply && archcode-studio sprint start 1\n")
+	fmt.Printf("  4. archcode-studio hooks install         # valida commits e branches (num repositório Git)\n")
 	return nil
 }

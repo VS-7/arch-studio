@@ -2,9 +2,11 @@
 
 import { client } from './transport'
 import type {
-  ADR, ArchEdge, ArchNode, Diagram, Endpoint, EndpointsSpec, Estimate,
-  DocumentMeta, LintReport, PricingConfig, ReqDocument, Requirement, RequirementsDoc, Snapshot, Task, UMLDiagram, UMLElement,
-  UMLKind, UMLRelation, UseCase,
+  ADR, ArchEdge, ArchNode, CheckResult, ClaimResult, CloseResult, CommitProposal, CompleteResult, Conventions,
+  ConventionsPreview, Criterion, Diagram, DoctorReport, Endpoint, EndpointsSpec, Estimate, DocumentMeta, GitOverview,
+  Handoff, LintIssue, LintReport, Note, Plan, PricingConfig, PRProposal, ReconcileChange, ReqDocument, Requirement,
+  RequiredCheck, RequirementsDoc, ResumeView, Session, Skill, SkillsOverview, Snapshot, Sprint, SprintPlanResult, SprintStatusView,
+  SyncResult, Task, UMLDiagram, UMLElement, UMLKind, UMLRelation, UseCase, WorkItem,
 } from './types'
 
 const request = client.request.bind(client)
@@ -49,6 +51,27 @@ export interface EdgeInput {
   estimated_hours?: number
   animated?: boolean
 }
+
+/** Campos que a interface altera num item do backlog (ausente = não muda). */
+export interface ItemInput {
+  type?: string
+  title?: string
+  description?: string
+  status?: string
+  priority?: string
+  sprint?: number
+  parent?: string
+  assignee?: string
+  estimate_h?: number
+  component_id?: string
+  dependencies?: string[]
+  requirements?: string[]
+  acceptance?: Criterion[]
+  notes?: string
+  archived?: boolean
+}
+
+const enc = encodeURIComponent
 
 function svgPath(opts: SvgOptions): string {
   const params = new URLSearchParams()
@@ -199,4 +222,73 @@ export const api = {
 
   // Exportação
   exportSvg: (opts: SvgOptions): Promise<string> => client.fetchBlob(svgPath(opts)).then((b) => b.text()),
+
+  // Módulo de Implementação — backlog
+  getPlan: () => request<Plan>('GET', '/api/plan'),
+  syncBacklog: (dryRun: boolean) => request<SyncResult>('POST', '/api/plan/sync', { dry_run: dryRun }),
+  createItem: (input: ItemInput) => request<WorkItem>('POST', '/api/plan/items', input),
+  getItem: (id: string) => request<WorkItem>('GET', `/api/plan/items/${enc(id)}`),
+  updateItem: (id: string, input: ItemInput) => request<WorkItem>('PATCH', `/api/plan/items/${enc(id)}`, input),
+  deleteItem: (id: string) => request<{ deleted: boolean }>('DELETE', `/api/plan/items/${enc(id)}`),
+  moveItem: (id: string, input: { before?: string; after?: string; sprint?: number; status?: string }) =>
+    request<WorkItem>('POST', `/api/plan/items/${enc(id)}/move`, input),
+  claimItem: (id: string, opts: { switch?: boolean; push?: boolean; force?: boolean }) =>
+    request<ClaimResult>('POST', `/api/plan/items/${enc(id)}/claim`, opts),
+  releaseItem: (id: string, opts: { reason?: string; force?: boolean }) =>
+    request<WorkItem>('POST', `/api/plan/items/${enc(id)}/release`, opts),
+  checkpointItem: (id: string, handoff: Handoff) => request<WorkItem>('POST', `/api/plan/items/${enc(id)}/checkpoint`, handoff),
+  completeItem: (id: string, input: { checks?: CheckResult[]; notes?: string; status?: string; force?: boolean }) =>
+    request<CompleteResult>('POST', `/api/plan/items/${enc(id)}/complete`, input),
+  itemPrompt: (id: string) => request<{ prompt: string }>('GET', `/api/plan/items/${enc(id)}/prompt`),
+  itemChecks: (id: string) => request<RequiredCheck[]>('GET', `/api/plan/items/${enc(id)}/checks`),
+
+  // Sprints
+  createSprint: (input: { goal?: string; start?: string; end?: string; capacity_h?: number }) =>
+    request<Sprint>('POST', '/api/sprints', input),
+  planSprint: (input: { number?: number; goal?: string; capacity_h?: number; ids?: string[]; apply: boolean }) =>
+    request<SprintPlanResult>('POST', '/api/sprints/plan', input),
+  getSprint: (n: number) => request<SprintStatusView>('GET', `/api/sprints/${n}`),
+  updateSprint: (n: number, input: { goal?: string; start?: string; end?: string; capacity_h?: number }) =>
+    request<Sprint>('PATCH', `/api/sprints/${n}`, input),
+  startSprint: (n: number) => request<Sprint>('POST', `/api/sprints/${n}/start`, {}),
+  closeSprint: (n: number, carryTo: number) => request<CloseResult>('POST', `/api/sprints/${n}/close`, { carry_to: carryTo }),
+
+  // Memória
+  resume: (detail: 'brief' | 'full' = 'brief') => request<ResumeView>('GET', `/api/resume?detail=${detail}`),
+  sessions: (limit = 30) => request<Session[]>('GET', `/api/sessions?limit=${limit}`),
+  logSession: (input: Partial<Session> & { summary: string }) => request<Session>('POST', '/api/sessions', input),
+  memory: (q = '') => request<Note[]>('GET', `/api/memory${q ? `?q=${enc(q)}` : ''}`),
+  remember: (input: { slug?: string; title: string; body: string; type?: string; tags?: string[]; components?: string[] }) =>
+    request<Note>('POST', '/api/memory', input),
+  forget: (slug: string) => request<{ deleted: boolean }>('DELETE', `/api/memory/${enc(slug)}`),
+
+  // Convenções e Git
+  getConventions: () => request<{ conventions: Conventions; exists: boolean; preview: ConventionsPreview }>('GET', '/api/conventions'),
+  saveConventions: (c: Conventions) => request<Conventions>('PUT', '/api/conventions', c),
+  initConventions: (preset: string, force = false) => request<Conventions>('POST', '/api/conventions/init', { preset, force }),
+  previewConventions: (c: Conventions) => request<ConventionsPreview>('POST', '/api/conventions/preview', c),
+  applyConventions: (ci: boolean) => request<{ written: string[] }>('POST', '/api/conventions/apply', { ci }),
+  git: () => request<GitOverview>('GET', '/api/git'),
+  gitLint: (input: { range?: string; branch?: string; pr_title?: string } = {}) =>
+    request<{ checked: number; issues: LintIssue[]; errors: number; ok: boolean }>('POST', '/api/git/lint', input),
+  installHooks: (force = false) => request<{ dir: string; installed: string[]; skipped?: string[]; notes?: string[] }>('POST', '/api/git/hooks', { force }),
+  uninstallHooks: () => request<{ removed: string[] }>('DELETE', '/api/git/hooks'),
+  commit: (input: { task_id?: string; summary?: string; body?: string; commit?: boolean; plan?: boolean }) =>
+    request<CommitProposal>('POST', '/api/git/commit', input),
+  pullRequest: (input: { ids?: string[]; open?: boolean; draft?: boolean }) => request<PRProposal>('POST', '/api/git/pr', input),
+  reconcile: (apply: boolean) => request<{ changes: ReconcileChange[]; applied: boolean }>('POST', '/api/git/reconcile', { apply }),
+  changelog: (write: boolean) => request<{ content: string; file: string; written: boolean }>('POST', '/api/git/changelog', { write }),
+
+  // Skills e agentes
+  skills: () => request<SkillsOverview>('GET', '/api/skills'),
+  getSkill: (name: string) => request<{ skill: Skill; content: string }>('GET', `/api/skills/${enc(name)}`),
+  createSkill: (input: { name: string; description: string; category: string; trigger: string }) =>
+    request<Skill>('POST', '/api/skills', input),
+  installSkills: (names: string[], update = false) => request<{ installed: string[] }>('POST', '/api/skills/install', { names, update }),
+  saveSkill: (name: string, content: string) => request<Skill>('PUT', `/api/skills/${enc(name)}`, { content }),
+  setSkillEnabled: (name: string, enabled: boolean) => request<Skill>('PATCH', `/api/skills/${enc(name)}`, { enabled }),
+  removeSkill: (name: string) => request<{ deleted: boolean }>('DELETE', `/api/skills/${enc(name)}`),
+  syncSkills: (targets: string[]) => request<{ written: string[]; removed: string[] }>('POST', '/api/skills/sync', { targets }),
+  agentSetup: (agent: 'claude' | 'cursor') => request<{ agent: string; written: string[]; notes?: string[] }>('POST', '/api/agents/setup', { agent }),
+  doctor: (input: { prefer?: string; fix?: boolean } = {}) => request<DoctorReport>('POST', '/api/doctor', input),
 }

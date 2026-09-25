@@ -808,12 +808,14 @@ func NormalizeComplexity(c string) string {
 
 func NormalizeStatus(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "completed", "done", "concluido", "concluído", "feito":
+	case "completed", "done", "concluido", "concluído", "concluida", "concluída", "feito", "feita":
 		return StatusCompleted
 	case "in_progress", "in-progress", "doing", "andamento", "em_andamento":
 		return StatusInProgress
-	case "blocked", "bloqueado":
+	case "blocked", "bloqueado", "bloqueada":
 		return StatusBlocked
+	case "review", "in_review", "em_revisao", "em revisão", "em revisao", "revisao", "revisão":
+		return StatusReview
 	default:
 		return StatusPending
 	}

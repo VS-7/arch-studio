@@ -7,7 +7,7 @@ export type NodeType =
 
 export type Tier = 'data' | 'domain' | 'backend' | 'integration' | 'frontend' | 'devops'
 export type Complexity = 'low' | 'medium' | 'high'
-export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'blocked'
+export type TaskStatus = 'pending' | 'in_progress' | 'review' | 'completed' | 'blocked'
 
 export interface Position { x: number; y: number }
 export interface Viewport { x: number; y: number; zoom: number }
@@ -392,6 +392,9 @@ export interface Snapshot {
   ai_prd_exists: boolean
   uml_diagrams: UMLDiagram[]
   document?: DocumentMeta
+  /** Backlog e sprints (.arch/plan/). Ausente em servidores antigos. */
+  plan?: Plan
+  conventions?: Conventions
 }
 
 export interface Finding {
@@ -420,3 +423,219 @@ export interface ServerEvent {
   payload?: unknown
   at: string
 }
+
+// ---------------------------------------------------------------------------
+// Módulo de Implementação (.arch/plan/, .arch/conventions.yaml, .arch/skills/,
+// .arch/sessions/, .arch/memory/) — espelho de internal/model/plan.go e cia.
+// ---------------------------------------------------------------------------
+
+export type ItemType = 'epic' | 'story' | 'task' | 'bug' | 'debt' | 'spike' | 'security'
+export type Priority = 'must' | 'should' | 'could' | 'wont'
+
+export interface Criterion { text: string; done: boolean }
+
+export interface Handoff {
+  last_step?: string
+  next_step?: string
+  files?: string[]
+  failing_tests?: string[]
+  notes?: string
+  updated_at?: string
+  by?: string
+}
+
+export interface CheckResult { skill: string; check: string; result: 'ok' | 'fail' | 'na'; evidence?: string }
+
+export interface WorkItem {
+  id: string
+  type: ItemType
+  title: string
+  status: TaskStatus
+  priority?: Priority | ''
+  sprint?: number
+  rank: string
+  parent?: string
+  assignee?: string
+  agent?: string
+  estimate_h?: number
+  tier?: string
+  component?: string
+  component_id?: string
+  dependencies?: string[]
+  requirements?: string[]
+  use_cases?: string[]
+  endpoints?: string[]
+  branch?: string
+  source?: string
+  overrides?: string[]
+  aliases?: string[]
+  order?: number
+  archived?: boolean
+  archive_reason?: string
+  created_at?: string
+  updated_at?: string
+  claimed_at?: string
+  completed_at?: string
+  description?: string
+  acceptance?: Criterion[]
+  handoff?: Handoff
+  checks?: CheckResult[]
+  notes?: string
+  file?: string
+  // Calculados pelo servidor nas listagens.
+  ready?: boolean
+  blocked_by?: string[]
+  stale?: boolean
+}
+
+export type SprintStatus = 'planned' | 'active' | 'closed'
+
+export interface Sprint {
+  number: number
+  name: string
+  goal?: string
+  start?: string
+  end?: string
+  status: SprintStatus
+  capacity_h?: number
+  started_at?: string
+  closed_at?: string
+  file?: string
+}
+
+export interface Plan { items: WorkItem[]; sprints: Sprint[]; warnings?: string[] }
+
+export interface PlanStats {
+  total: number; pending: number; in_progress: number; review: number; completed: number; blocked: number
+  planned_hours: number; done_hours: number; progress: number
+}
+
+export interface SyncChange { id: string; title: string; type: ItemType; kind: 'added' | 'updated' | 'archived' | 'restored'; fields?: string[] }
+export interface SyncResult { dry_run: boolean; changes: SyncChange[]; counts: Record<string, number>; total_items: number; slicing: string }
+
+export interface SprintPlanResult {
+  sprint: Sprint
+  proposal: { items: string[]; hours: number; capacity_h: number; skipped?: string[] }
+  items: WorkItem[]
+  applied: boolean
+  warnings?: string[]
+}
+
+export interface SprintStatusView {
+  sprint?: Sprint
+  stats: PlanStats
+  days_left: number
+  items: WorkItem[]
+  load_h: number
+  sprints: Sprint[]
+  backlog: PlanStats
+}
+
+export interface CloseResult {
+  sprint: Sprint; report_file: string; carried: string[]; carried_to: number; stats: PlanStats
+  changelog_file?: string; suggested_tag: string; tag_command: string
+}
+
+export interface ClaimResult {
+  task: WorkItem; branch: string; branch_created: boolean; switched: boolean; pushed: boolean
+  reservation_commit?: string; remote: 'confirmed' | 'unconfirmed' | 'none'
+  warnings?: string[]; next_command?: string; skills?: string[]
+}
+
+export interface RequiredCheck { skill: string; check: string; text: string; command?: string }
+
+export interface CompleteResult {
+  task?: WorkItem; completed: boolean; status?: TaskStatus; missing_checks?: string[]; failed_checks?: string[]
+  required_checks?: RequiredCheck[]; warnings?: string[]; message: string; next_steps?: string[]
+}
+
+export type Autonomy = 'assistido' | 'supervisionado' | 'autonomo'
+
+export interface Conventions {
+  preset: 'archcode-sprint' | 'conventional-commits'
+  language: string
+  planning: { sprint_days: number; slicing: 'component' | 'hybrid'; stale_days: number }
+  git: {
+    main_branch: string; remote: string; branch: string; branch_off_sprint: string
+    commit: string; commit_off_sprint: string; off_sprint_kinds?: string[]; max_subject: number
+    verbs?: string[]; require_id: boolean; branch_exempt?: string[]
+  }
+  pull_request: { title: string; granularity: 'task' | 'story'; merge_strategy: string }
+  tags: { sprint: string; release: string }
+  ai: { autonomy: Autonomy }
+}
+
+export interface ConventionsPreview {
+  branch: string; branch_off_sprint: string; commit: string; commit_off_sprint: string
+  pr_title: string; sprint_tag: string; errors?: string[]
+}
+
+export interface GitFileChange { path: string; code: string }
+export interface GitStatus {
+  branch: string; detached?: boolean; upstream?: string; ahead: number; behind: number
+  changed: GitFileChange[]; staged: number; unstaged: number; untracked: number; conflicts: number
+}
+export interface GitCommit { hash: string; parents: number; author: string; email: string; date: string; subject: string; body?: string }
+export interface LintIssue { level: 'error' | 'warning'; subject: string; ref?: string; message: string }
+
+export interface GitOverview {
+  available: boolean; status?: GitStatus; branch_issues?: LintIssue[]; current_task?: WorkItem
+  person?: string; hooks: string[]; forge: boolean; recent?: GitCommit[]
+}
+
+export interface CommitProposal {
+  task_id: string; subject: string; message: string; branch?: string; current_branch?: string
+  staged: string[]; warnings?: string[]; committed: boolean; hash?: string; command?: string
+}
+
+export interface PRProposal {
+  title: string; body: string; base: string; head: string; items: string[]
+  warnings?: string[]; opened: boolean; url?: string; command?: string
+}
+
+export interface ReconcileChange { id: string; title: string; from: TaskStatus; to: TaskStatus; reason: string }
+
+export interface SkillCheck { id: string; text: string; command?: string; required: boolean }
+export interface Skill {
+  name: string; description: string; category: 'seguranca' | 'organizacao' | 'padronizacao' | 'studio'
+  version?: string; trigger: 'sempre' | 'ao_iniciar_tarefa' | 'antes_do_pr'; scope?: string
+  applies_to?: { tiers?: string[]; stacks?: string[] }; checks?: SkillCheck[]; disabled?: boolean; source?: string
+  body: string; installed: boolean; builtin: boolean; update_available?: boolean; file?: string
+}
+export interface SkillsOverview {
+  installed: Skill[]; catalog: Skill[]; stacks: string[]; suggested: string[]; warnings?: string[]
+  synced: { claude: boolean; agents: boolean; cursor: boolean }
+}
+
+export interface Session {
+  id: string; author?: string; agent?: string; started?: string; ended?: string; sprint?: number
+  tasks?: string[]; branch?: string; commits?: string[]; summary?: string; done?: string[]; decisions?: string[]
+  next_steps?: string[]; blockers?: string[]; files?: string[]; commands?: string[]; checks?: CheckResult[]; file?: string
+}
+
+export interface Note {
+  slug: string; title: string; type: 'decisao' | 'convencao' | 'armadilha' | 'contexto' | 'glossario'
+  tags?: string[]; components?: string[]; author?: string; created?: string; updated?: string; body: string; file?: string
+}
+
+export interface ResumeTask {
+  id: string; title: string; type: ItemType; status: TaskStatus; sprint?: number; assignee?: string
+  component?: string; branch?: string; estimate_h?: number; stale?: boolean; blocked_by?: string[]
+  handoff?: Handoff; acceptance?: Criterion[]; dependencies?: string[]; requirements?: string[]
+  endpoints?: string[]; suggested_branch?: string
+}
+
+export interface ResumeView {
+  project: string; person?: string; detail: 'brief' | 'full'; autonomy: Autonomy
+  sprint?: { number: number; name: string; goal?: string; start?: string; end?: string; days_left: number; stats: PlanStats; capacity_h?: number }
+  my_work: ResumeTask[]; next?: ResumeTask
+  last_session?: { id: string; author?: string; agent?: string; started?: string; summary?: string; tasks?: string[]; next_steps?: string[]; blockers?: string[] }
+  team_sessions?: { id: string; author?: string; agent?: string; started?: string; summary?: string; tasks?: string[]; next_steps?: string[]; blockers?: string[] }[]
+  stale_claims?: ResumeTask[]
+  git: { available: boolean; branch?: string; upstream?: string; ahead?: number; behind?: number; changed?: string[]; changed_count: number; last_commit?: string }
+  divergences?: string[]; skills?: { name: string; trigger: string; description?: string; required_checks?: number }[]
+  memories?: { slug: string; title: string; type: string; summary?: string }[]
+  hints: string[]; backlog_size: number
+}
+
+export interface DoctorReport { problems: string[]; conflicts: string[]; resolved?: string[]; regenerated?: string[] }

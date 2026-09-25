@@ -172,6 +172,18 @@ func eventForPath(rel string) string {
 		return hub.EventTasks
 	case rel == store.FileManifest:
 		return hub.EventManifest
+	case rel == store.FileConventions:
+		return hub.EventConventions
+	case strings.HasPrefix(rel, store.DirPlan+"/"):
+		return hub.EventPlan
+	case strings.HasPrefix(rel, store.DirSessions+"/"):
+		return hub.EventSession
+	case strings.HasPrefix(rel, store.DirMemory+"/"):
+		return hub.EventMemory
+	case strings.HasPrefix(rel, store.DirSkills+"/"):
+		return hub.EventSkills
+	case rel == ".git/HEAD", strings.HasPrefix(rel, ".git/refs/"), rel == ".git/packed-refs":
+		return hub.EventGit
 	case rel == store.FileDocument, strings.HasPrefix(rel, store.DirDocs+"/"):
 		return hub.EventDocs
 	case strings.HasPrefix(rel, store.DirDiagrams+"/"):

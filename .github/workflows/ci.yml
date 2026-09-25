@@ -56,6 +56,14 @@ jobs:
           "$GITHUB_WORKSPACE/archcode-studio" estimate
           "$GITHUB_WORKSPACE/archcode-studio" export svg --out /tmp/smoke/arch.svg
           test -s /tmp/smoke/arch.svg
+          # Módulo de Implementação: backlog, sprint, retomada, convenções e skills.
+          "$GITHUB_WORKSPACE/archcode-studio" backlog list
+          "$GITHUB_WORKSPACE/archcode-studio" sprint plan --goal "Fumaça" --apply
+          "$GITHUB_WORKSPACE/archcode-studio" sprint start 1
+          "$GITHUB_WORKSPACE/archcode-studio" resume
+          "$GITHUB_WORKSPACE/archcode-studio" conventions show
+          "$GITHUB_WORKSPACE/archcode-studio" skills list
+          "$GITHUB_WORKSPACE/archcode-studio" doctor
 
   desktop:
     # Versão fixa do Ubuntu: o binário exige a glibc/GTK do sistema em que foi

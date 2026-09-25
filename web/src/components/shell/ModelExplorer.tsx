@@ -17,7 +17,7 @@ import {
 } from '../ui/context-menu'
 import { IconAction } from '../ui'
 import { ElementGlyph, KindGlyph } from '../uml/UmlGlyph'
-import { VIEW_ICON, VIEW_ORDER } from './viewMeta'
+import { IMPLEMENTATION_VIEWS, VIEW_ICON, VIEW_ORDER } from './viewMeta'
 
 /** Rótulos do Model Explorer (um pouco mais descritivos que os das abas). */
 const SUPPORT_LABEL: Partial<Record<ViewId, string>> = {
@@ -43,7 +43,7 @@ interface Props {
 export function ModelExplorer(props: Props) {
   const { snapshot, activeTab, selection, onOpen } = props
   const [query, setQuery] = useState('')
-  const [open, setOpen] = useState<Set<string>>(() => new Set(['root', 'arch', ...UML_KINDS.map((k) => `kind:${k}`), 'support']))
+  const [open, setOpen] = useState<Set<string>>(() => new Set(['root', 'arch', ...UML_KINDS.map((k) => `kind:${k}`), 'impl', 'support']))
   const toggle = (key: string) => setOpen((prev) => {
     const next = new Set(prev)
     if (next.has(key)) next.delete(key); else next.add(key)
@@ -67,6 +67,7 @@ export function ModelExplorer(props: Props) {
     adrs: snapshot.adrs.length,
     api: snapshot.endpoints.endpoints.length,
     tasks: snapshot.tasks.tasks.length || undefined,
+    planning: snapshot.plan?.items.filter((i) => !i.archived && i.type !== 'epic' && i.type !== 'story').length || undefined,
   }
 
   return (
@@ -136,6 +137,13 @@ export function ModelExplorer(props: Props) {
                 </div>
               )
             })}
+
+            {/* Módulo de Implementação */}
+            <Row depth={1} icon={<FolderOpen size={14} className="text-muted-foreground" />} label="Implementação"
+              expandable open={open.has('impl')} onToggle={() => toggle('impl')} onClick={() => toggle('impl')} />
+            {open.has('impl') && IMPLEMENTATION_VIEWS.map((view) => (
+              <SupportRow key={view} view={view} count={supportCounts[view]} onOpen={onOpen} activeKey={activeKey} />
+            ))}
 
             {/* Artefatos de apoio */}
             <Row depth={1} icon={<FolderOpen size={14} className="text-muted-foreground" />} label="Documentação & Gestão"

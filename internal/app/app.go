@@ -15,14 +15,19 @@ package app
 
 import (
 	"sync"
+	"time"
 
+	"github.com/archcode/studio/internal/gitx"
 	"github.com/archcode/studio/internal/hub"
 	"github.com/archcode/studio/internal/store"
 )
 
 type App struct {
-	st *store.Store
-	hb *hub.Hub
+	st    *store.Store
+	hb    *hub.Hub
+	git   gitx.Git
+	forge gitx.Forge
+	now   func() time.Time
 
 	// tx serializa as transações "ler → mutar → gravar". Sem ela, duas escritas
 	// concorrentes (por exemplo, duas chamadas MCP em paralelo) poderiam carregar
@@ -30,7 +35,28 @@ type App struct {
 	tx sync.Mutex
 }
 
-func New(st *store.Store, hb *hub.Hub) *App { return &App{st: st, hb: hb} }
+// Option ajusta dependências do App (usado pelos testes).
+type Option func(*App)
+
+// WithGit troca o adaptador do Git (os testes usam gitx.Fake).
+func WithGit(g gitx.Git) Option { return func(a *App) { a.git = g } }
+
+// WithForge troca o servidor de código (GitHub via gh).
+func WithForge(f gitx.Forge) Option { return func(a *App) { a.forge = f } }
+
+// WithClock troca o relógio.
+func WithClock(now func() time.Time) Option { return func(a *App) { a.now = now } }
+
+func New(st *store.Store, hb *hub.Hub, opts ...Option) *App {
+	a := &App{st: st, hb: hb, git: gitx.New(st.Root()), forge: gitx.NewGitHub(st.Root()), now: time.Now}
+	for _, o := range opts {
+		o(a)
+	}
+	return a
+}
+
+// timestamp devolve o instante atual no formato gravado nos arquivos.
+func (a *App) timestamp() string { return a.now().UTC().Format(time.RFC3339) }
 
 func (a *App) emit(ev hub.Event) {
 	if a.hb != nil {

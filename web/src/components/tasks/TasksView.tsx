@@ -4,7 +4,7 @@
 // aqui; mudar o status pela interface tem exatamente o mesmo efeito que a IA
 // chamar `mark_task_status`.
 
-import { Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Lock, PlayCircle, Workflow, XCircle } from 'lucide-react'
+import { Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Eye, Lock, PlayCircle, Workflow, XCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api } from '../../lib/api'
 import { errorMessage } from '../../lib/errors'
@@ -19,7 +19,7 @@ const TIER_LABEL: Record<string, string> = {
 }
 
 const STATUS_ICON: Record<TaskStatus, typeof CircleDashed> = {
-  pending: CircleDashed, in_progress: PlayCircle, completed: CheckCircle2, blocked: XCircle,
+  pending: CircleDashed, in_progress: PlayCircle, review: Eye, completed: CheckCircle2, blocked: XCircle,
 }
 
 export function TasksView({ snapshot, onGeneratePRD }: { snapshot: Snapshot; onGeneratePRD: () => void }) {
@@ -68,6 +68,7 @@ export function TasksView({ snapshot, onGeneratePRD }: { snapshot: Snapshot; onG
             <option value="all">Todas</option>
             <option value="pending">Pendentes</option>
             <option value="in_progress">Em andamento</option>
+            <option value="review">Em revisão</option>
             <option value="completed">Concluídas</option>
             <option value="blocked">Bloqueadas</option>
           </Select>

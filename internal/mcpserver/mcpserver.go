@@ -23,33 +23,41 @@ import (
 	"github.com/archcode/studio/internal/pricing"
 )
 
-const instructions = `ArchCode Studio — arquitetura de software como código.
+const instructions = `ArchCode Studio — arquitetura de software como código, com backlog, sprints e memória.
 
-Este servidor dá acesso de leitura e escrita à arquitetura viva de um projeto:
-diagrama de componentes, diagramas UML (casos de uso, classes, sequência e
-estados), contratos de API, requisitos, casos de uso, ADRs, estimativas de
-esforço/custo e a fila de tarefas de implementação.
+Este servidor dá acesso de leitura e escrita à arquitetura viva de um projeto
+(diagrama de componentes, UML, contratos de API, requisitos, casos de uso,
+ADRs, estimativas) e ao trabalho em cima dela: backlog, sprints, reservas de
+tarefa, checkpoints, sessões, memórias do projeto e skills.
 
-Fluxo recomendado:
- 1. get_system_context            — entenda o sistema antes de qualquer coisa.
- 2. add_architecture_node / connect_nodes / upsert_requirement / upsert_use_case
-                                  — modele o que foi pedido.
- 3. create_uml_diagram / add_uml_element / add_uml_relation / generate_use_case_diagram
-                                  — detalhe domínio, fluxos e ciclos de vida em UML.
- 4. validate_architecture_rules   — confira se a arquitetura está consistente.
- 5. generate_ai_prd               — compile o blueprint de implementação.
- 6. get_implementation_tasks      — pegue a próxima tarefa pronta (ready=true).
- 7. mark_task_status              — registre progresso ao concluir cada tarefa.
+Ao começar QUALQUER sessão:
+ 1. resume_work                   — onde parou: sprint, suas tarefas com checkpoint, estado do Git
+                                    (o Git vence a memória), próxima tarefa, skills e memórias.
+
+Para implementar:
+ 2. claim_task                    — reserva a tarefa e cria a branch da convenção.
+ 3. list_skills / get_skill       — regras de segurança, organização e padrão que valem para ela.
+ 4. save_checkpoint               — depois de cada passo significativo.
+ 5. create_backlog_item           — o que estiver fora do escopo da tarefa.
+ 6. log_session → propose_commit → complete_task (com os checks das skills) → prepare_pull_request.
+
+Para modelar (antes de codar algo que não está no diagrama):
+ get_system_context → upsert_requirement / upsert_use_case → add_architecture_node / connect_nodes
+ → validate_architecture_rules → sync_backlog.
 
 Regras:
- - NUNCA edite .arch/diagrams/macro.json nem os JSON UML diretamente: use as ferramentas.
-   Elas preservam as coordenadas dos nós já posicionados pelo usuário.
- - Todo componente novo deve ser justificado por um requisito ou caso de uso.
- - Toda aresta HTTP deve declarar seus endpoints, que alimentam api/endpoints.yaml.
+ - NUNCA edite .arch/diagrams/*.json, os JSON UML nem .arch/plan/* diretamente: use as ferramentas.
+ - Respeite o nível de autonomia do projeto (resume_work informa): assistido (humano confirma
+   commits), supervisionado (agente commita, humano publica) ou autônomo (agente publica e abre
+   PR em rascunho). Merge, tag e release são SEMPRE humanos.
+ - Nada de segredos em checkpoints, sessões ou memórias: tudo vai para o Git.
+ - Todo componente novo deve ser justificado por um requisito ou caso de uso; toda aresta HTTP
+   declara seus endpoints (api/endpoints.yaml).
 
 Documento de requisitos formal: preencha category/related nos RNFs, description,
 requirements e post_conditions nos casos de uso, registre cliente/usuários/histórico
-com update_document_metadata e gere com generate_requirements_document.`
+com update_document_metadata e gere com generate_requirements_document.
+Ferramentas legadas: get_implementation_tasks e mark_task_status continuam válidas.`
 
 // Deps reúne o que o servidor MCP precisa para operar.
 type Deps struct {
@@ -70,7 +78,9 @@ func New(d Deps) *server.MCPServer {
 	registerTools(s, d.App)
 	registerUMLTools(s, d.App)
 	registerReqDocTools(s, d.App)
+	registerImplementationTools(s, d.App)
 	registerPrompts(s)
+	registerImplementationPrompts(s)
 	return s
 }
 

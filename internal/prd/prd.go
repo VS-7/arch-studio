@@ -55,6 +55,10 @@ type Options struct {
 	TargetStack          string `json:"target_stack"`
 	IncludeTestScenarios bool   `json:"include_test_scenarios"`
 	Granularity          string `json:"granularity"` // summary | detailed
+	// SliceUseCases deixa os critérios Given-When-Then dos casos de uso fora
+	// das tarefas de componente: no fatiamento híbrido do backlog eles vão para
+	// as fatias verticais por requisito. A tarefa E2E continua sendo gerada.
+	SliceUseCases bool `json:"slice_use_cases,omitempty"`
 }
 
 // Normalize aplica os padrões (granularidade "detailed").
@@ -78,6 +82,9 @@ type Input struct {
 	Endpoints    *model.EndpointsSpec
 	UMLDiagrams  []model.UMLDiagram
 	Previous     *model.TaskBoard
+	// TaskIDs fixa o id da tarefa de cada componente (id do nó → id da
+	// tarefa), vindo do backlog: renomear o componente não muda o id.
+	TaskIDs map[string]string
 }
 
 // Result é a saída da compilação.
@@ -207,7 +214,9 @@ func containsStr(list []string, s string) bool {
 // Geração de tarefas
 // ---------------------------------------------------------------------------
 
-func taskAbbrev(label string) string {
+// TaskAbbrev abrevia o rótulo de um componente para compor ids de tarefa
+// ("Core API" → "CORE").
+func TaskAbbrev(label string) string {
 	slug := model.Slugify(label)
 	parts := strings.Split(slug, "-")
 	skip := map[string]bool{"service": true, "servico": true, "api": true, "app": true, "db": true}
@@ -316,6 +325,10 @@ func defaultAcceptance(n model.Node, stack string, eps []model.Endpoint) []strin
 }
 
 // givenWhenThen converte um caso de uso em critérios de aceite verificáveis.
+// GivenWhenThen converte os critérios e o fluxo do caso de uso em cenários
+// Given-When-Then.
+func GivenWhenThen(uc model.UseCase) []string { return givenWhenThen(uc) }
+
 func givenWhenThen(uc model.UseCase) []string {
 	if len(uc.Acceptance) > 0 {
 		return uc.Acceptance
@@ -423,13 +436,21 @@ func Compile(in Input, opts Options) *Result {
 
 	taskIDByNode := map[string]string{}
 	usedIDs := map[string]bool{}
-	for i, n := range ordered {
-		abbrev := taskAbbrev(n.Data.Label)
-		id := fmt.Sprintf("TASK-%s-%02d", abbrev, 1)
-		for seq := 2; usedIDs[id]; seq++ {
-			id = fmt.Sprintf("TASK-%s-%02d", abbrev, seq)
+	for _, n := range ordered {
+		if id := in.TaskIDs[n.ID]; id != "" {
+			usedIDs[id] = true
 		}
-		usedIDs[id] = true
+	}
+	for i, n := range ordered {
+		id := in.TaskIDs[n.ID]
+		if id == "" {
+			abbrev := TaskAbbrev(n.Data.Label)
+			id = fmt.Sprintf("TASK-%s-%02d", abbrev, 1)
+			for seq := 2; usedIDs[id]; seq++ {
+				id = fmt.Sprintf("TASK-%s-%02d", abbrev, seq)
+			}
+			usedIDs[id] = true
+		}
 		taskIDByNode[n.ID] = id
 
 		tier := layout.ResolveTier(n)
@@ -437,7 +458,7 @@ func Compile(in Input, opts Options) *Result {
 		ucs := useCasesForNode(in.UseCases, n)
 
 		acceptance := defaultAcceptance(n, stack, eps)
-		if opts.IncludeTestScenarios {
+		if opts.IncludeTestScenarios && !opts.SliceUseCases {
 			for _, uc := range ucs {
 				acceptance = append(acceptance, givenWhenThen(uc)...)
 			}
@@ -567,7 +588,7 @@ func SyncNodeStatus(d *model.Diagram, board *model.TaskBoard) bool {
 			switch t.Status {
 			case model.StatusBlocked:
 				status = model.StatusBlocked
-			case model.StatusInProgress:
+			case model.StatusInProgress, model.StatusReview:
 				anyStarted = true
 				if status != model.StatusBlocked {
 					status = model.StatusInProgress
@@ -928,7 +949,7 @@ func RefreshCheckboxes(md string, board *model.TaskBoard) (string, bool) {
 			switch t.Status {
 			case model.StatusCompleted:
 				mark = "x"
-			case model.StatusInProgress:
+			case model.StatusInProgress, model.StatusReview:
 				mark = "~"
 			case model.StatusBlocked:
 				mark = "!"

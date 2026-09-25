@@ -55,8 +55,33 @@ func (w *Watcher) Start() error {
 			log.Printf("watcher: não foi possível observar %s: %v", dir, err)
 		}
 	}
+	// Pastas do Módulo de Implementação: observadas quando existem (o projeto
+	// que não usa backlog não ganha pastas vazias). As subpastas das skills
+	// (.arch/skills/<nome>/) também, e as criadas depois entram pelo handle.
+	for _, dir := range store.PlanDirs {
+		w.addTree(dir)
+	}
+	// Git: troca de branch (HEAD) e commits (refs/heads) atualizam o painel.
+	if info, err := os.Stat(filepath.Join(w.st.Root(), ".git")); err == nil && info.IsDir() {
+		_ = w.fsw.Add(filepath.Join(w.st.Root(), ".git"))
+		w.addTree(".git/refs/heads")
+	}
 	go w.loop()
 	return nil
+}
+
+// addTree observa a pasta e todas as subpastas existentes.
+func (w *Watcher) addTree(rel string) {
+	abs, err := w.st.Path(rel)
+	if err != nil {
+		return
+	}
+	_ = filepath.WalkDir(abs, func(path string, d os.DirEntry, err error) error {
+		if err == nil && d.IsDir() {
+			_ = w.fsw.Add(path)
+		}
+		return nil
+	})
 }
 
 func (w *Watcher) Close() error { return w.fsw.Close() }
@@ -79,6 +104,12 @@ func (w *Watcher) loop() {
 }
 
 func relevant(path string) bool {
+	slash := filepath.ToSlash(path)
+	if i := strings.Index(slash, "/.git/"); i >= 0 {
+		rest := slash[i+len("/.git/"):]
+		return rest == "HEAD" || rest == "packed-refs" ||
+			(strings.HasPrefix(rest, "refs/heads/") && !strings.HasSuffix(rest, ".lock"))
+	}
 	base := filepath.Base(path)
 	if strings.HasPrefix(base, ".") && !strings.HasSuffix(base, ".yaml") && !strings.HasSuffix(base, ".json") {
 		return false
@@ -102,7 +133,10 @@ func (w *Watcher) handle(ev fsnotify.Event) {
 	// do filtro de extensão, que descartaria nomes de diretório.
 	if ev.Op&fsnotify.Create != 0 {
 		if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
-			_ = w.fsw.Add(ev.Name)
+			slash := filepath.ToSlash(ev.Name)
+			if !strings.Contains(slash, "/.git/") || strings.Contains(slash, "/.git/refs/heads/") {
+				_ = w.fsw.Add(ev.Name)
+			}
 			return
 		}
 	}

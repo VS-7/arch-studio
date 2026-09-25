@@ -1,10 +1,20 @@
-import { Info, Play, Plug, Terminal } from 'lucide-react'
+import { Bot, Info, Play, Plug, Terminal } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { api } from '../../../lib/api'
+import { errorMessage } from '../../../lib/errors'
 import { platform } from '../../../lib/platform'
-import { Modal, useToast } from '../../ui'
+import { Button, Modal, useToast } from '../../ui'
 
 export function McpModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const toast = useToast()
+  const [busy, setBusy] = useState<'claude' | 'cursor' | null>(null)
+  const setup = async (agent: 'claude' | 'cursor') => {
+    setBusy(agent)
+    try {
+      const res = await api.agentSetup(agent)
+      toast('success', `${agent === 'claude' ? 'Claude Code' : 'Cursor'} configurado: ${res.written.join(', ')}`)
+    } catch (err) { toast('error', errorMessage(err)) } finally { setBusy(null) }
+  }
   const [root, setRoot] = useState('.')
   // Executável que o agente roda para o MCP via stdio: a CLI ou, no app desktop,
   // o próprio executável do app.
@@ -27,7 +37,17 @@ export function McpModal({ open, onClose }: { open: boolean; onClose: () => void
     <Modal open={open} onClose={onClose} wide title="Conectar um agente de IA"
       description="O ArchCode Studio é um servidor Model Context Protocol: o agente lê e modifica arquitetura e diagramas UML com ferramentas atômicas, sem corromper o layout.">
       <div className="space-y-4 text-sm">
-        <Section icon={Terminal} title="Claude Code">
+        <Section icon={Bot} title="Configuração completa no projeto (recomendado)">
+          <p className="mb-2 text-xs text-muted-foreground">
+            Grava o MCP do projeto (<code>.mcp.json</code>), os hooks que fazem o agente abrir cada sessão já sabendo onde o trabalho parou
+            e as skills do projeto. Os arquivos vão para o Git: o time inteiro ganha a mesma configuração.
+          </p>
+          <div className="flex gap-2">
+            <Button size="sm" variant="primary" loading={busy === 'claude'} onClick={() => void setup('claude')}>Configurar Claude Code</Button>
+            <Button size="sm" loading={busy === 'cursor'} onClick={() => void setup('cursor')}>Configurar Cursor</Button>
+          </div>
+        </Section>
+        <Section icon={Terminal} title="Claude Code (só o MCP, na sua máquina)">
           <Code>{`claude mcp add archcode-studio -- ${command} mcp --dir ${root}`}</Code>
         </Section>
         <Section icon={Plug} title="Cursor, Antigravity, Windsurf, Roo Code">
@@ -41,6 +61,9 @@ export function McpModal({ open, onClose }: { open: boolean; onClose: () => void
         )}
         <Section icon={Info} title="Fluxo recomendado para o agente">
           <ol className="list-decimal space-y-0.5 pl-4 text-xs leading-relaxed text-muted-foreground">
+            <li><code>resume_work</code> — onde o trabalho parou, próxima tarefa, skills e memórias (sempre primeiro)</li>
+            <li><code>claim_task</code> → implementar com <code>save_checkpoint</code> a cada passo → <code>log_session</code> → <code>propose_commit</code> → <code>complete_task</code> → <code>prepare_pull_request</code></li>
+            <li>Para modelar antes de codar:</li>
             <li><code>get_system_context</code> — entender o sistema antes de agir</li>
             <li><code>add_architecture_node</code> / <code>connect_nodes</code> — modelar a arquitetura</li>
             <li><code>upsert_requirement</code> / <code>upsert_use_case</code> — justificar cada componente</li>
@@ -48,7 +71,7 @@ export function McpModal({ open, onClose }: { open: boolean; onClose: () => void
             <li><code>auto_layout_diagram</code> — organizar um diagrama recém-criado para caber no documento</li>
             <li><code>validate_architecture_rules</code> — corrigir os erros apontados</li>
             <li><code>generate_ai_prd</code> — compilar o blueprint em ordem topológica</li>
-            <li><code>get_implementation_tasks</code> → codificar → <code>mark_task_status</code></li>
+            <li><code>sync_backlog</code> — levar a mudança ao backlog (épicos, histórias e tarefas)</li>
           </ol>
         </Section>
       </div>

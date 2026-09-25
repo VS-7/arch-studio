@@ -7,6 +7,7 @@
 export type ViewId =
   | 'document' | 'requirements' | 'use-cases' | 'adrs' | 'ai-prd' | 'proposal'
   | 'api' | 'pricing' | 'tasks'
+  | 'planning' | 'resume' | 'memory' | 'skills' | 'conventions'
 
 export type TabRef =
   | { type: 'arch' }
@@ -22,7 +23,12 @@ export const VIEW_LABEL: Record<ViewId, string> = {
   proposal: 'Proposta Comercial',
   api: 'Contratos de API',
   pricing: 'Precificação',
-  tasks: 'Implementação',
+  tasks: 'Fila de Implementação',
+  planning: 'Planejamento',
+  resume: 'Onde parei',
+  memory: 'Memória e Sessões',
+  skills: 'Skills',
+  conventions: 'Convenções e Git',
 }
 
 const VIEWS = new Set(Object.keys(VIEW_LABEL))

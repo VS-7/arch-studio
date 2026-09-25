@@ -25,6 +25,14 @@ const (
 	EventEdgeAdded   = "edge_added"
 	EventPRD         = "ai_prd_generated"
 	EventUML         = "uml_changed"
+
+	// Módulo de Implementação.
+	EventPlan        = "plan_changed"
+	EventConventions = "conventions_changed"
+	EventSession     = "session_logged"
+	EventMemory      = "memory_changed"
+	EventSkills      = "skills_changed"
+	EventGit         = "git_changed"
 )
 
 // Origem da mudança, usada pela UI para decidir se deve animar ou recarregar.

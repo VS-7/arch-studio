@@ -50,6 +50,8 @@ export type ArchFlowNodeData = NodeData & {
   __highlight?: boolean
   __dimmed?: boolean
   __executive?: boolean
+  /** Sprint em que o componente ainda tem trabalho ("S02"), do backlog. */
+  __sprint?: string
 }
 
 export type ArchFlowNode = Node<ArchFlowNodeData, 'arch'>
@@ -98,6 +100,12 @@ function ArchNodeViewImpl({ id, data, selected, type }: NodeProps<ArchFlowNode>)
         {status && (
           <span className="absolute left-2 top-2.5 size-2 rounded-full" style={{ backgroundColor: status.dot }}
             title={status.label} />
+        )}
+        {data.__sprint && !executive && (
+          <span className="absolute bottom-1 left-1.5 rounded-sm border px-1 font-mono text-[9px] font-semibold tabular-nums"
+            style={{ color: 'var(--uml-muted)' }} title={`Trabalho planejado para a ${data.__sprint.replace('S', 'Sprint ')}`}>
+            {data.__sprint}
+          </span>
         )}
       </header>
 

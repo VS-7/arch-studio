@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/archcode/studio/internal/hub"
 	"github.com/archcode/studio/internal/model"
+	"github.com/archcode/studio/internal/plan"
 	"github.com/archcode/studio/internal/prd"
 	"github.com/archcode/studio/internal/store"
 )
@@ -22,8 +22,13 @@ type PRDResult struct {
 	Hash       string `json:"hash"`
 	Progress   int    `json:"overall_progress_percentage"`
 	Summary    string `json:"summary"`
+	// Backlog resume o que a compilação mudou no backlog.
+	Backlog map[string]int `json:"backlog,omitempty"`
 }
 
+// GenerateAIPRD compila o blueprint docs/ai-prd.md e sincroniza o backlog com
+// as mesmas tarefas: os ids vêm do backlog, então renomear um componente não
+// perde o status da tarefa dele.
 func (a *App) GenerateAIPRD(opts prd.Options, source string) (*PRDResult, error) {
 	opts = opts.Normalize()
 	a.tx.Lock()
@@ -33,38 +38,36 @@ func (a *App) GenerateAIPRD(opts prd.Options, source string) (*PRDResult, error)
 	if err != nil {
 		return nil, err
 	}
-	res := prd.Compile(prd.Input{
-		Manifest:     snap.Manifest,
-		Diagram:      snap.Diagram,
-		Requirements: snap.Requirements,
-		UseCases:     snap.UseCases,
-		ADRs:         snap.ADRs,
-		Endpoints:    snap.Endpoints,
-		UMLDiagrams:  snap.UMLDiagrams,
-		Previous:     snap.Tasks,
-	}, opts)
-
+	p, err := a.loadPlan()
+	if err != nil {
+		return nil, err
+	}
+	conv, err := a.st.LoadConventions()
+	if err != nil {
+		return nil, err
+	}
+	res := a.compileBoard(snap, p, conv, opts)
 	if err := a.st.WriteFile(store.FileAIPRD, []byte(res.Markdown)); err != nil {
 		return nil, err
 	}
-	if err := a.st.SaveTasks(res.Board); err != nil {
+	sync, err := a.syncBacklogLocked(false, source, res)
+	if err != nil {
 		return nil, err
 	}
-	if prd.SyncNodeStatus(snap.Diagram, res.Board) {
-		_ = a.saveDiagram(snap.Diagram)
-	}
+	board, _ := a.st.LoadTasks()
 
 	a.emit(hub.Event{
 		Type: hub.EventPRD, Source: source, Path: store.FileAIPRD,
-		Message: fmt.Sprintf("AI-PRD gerado com %d tarefas", len(res.Board.Tasks)),
-		Payload: map[string]any{"total_tasks": len(res.Board.Tasks), "hash": res.Hash},
+		Message: fmt.Sprintf("AI-PRD gerado com %d tarefas", len(board.Tasks)),
+		Payload: map[string]any{"total_tasks": len(board.Tasks), "hash": res.Hash},
 	})
 	return &PRDResult{
 		FilePath:   store.FileAIPRD,
-		TotalTasks: len(res.Board.Tasks),
+		TotalTasks: len(board.Tasks),
 		Hash:       res.Hash,
-		Progress:   res.Board.ProgressPercentage(),
-		Summary:    fmt.Sprintf("PRD para IA gerado com %d tarefas em ordem topológica.", len(res.Board.Tasks)),
+		Progress:   board.ProgressPercentage(),
+		Summary:    fmt.Sprintf("PRD para IA gerado com %d tarefas em ordem topológica.", len(board.Tasks)),
+		Backlog:    sync.Counts,
 	}, nil
 }
 
@@ -78,7 +81,7 @@ type TaskView struct {
 
 // TaskQuery filtra a fila de implementação.
 type TaskQuery struct {
-	// Status: pending | in_progress | completed | blocked | all ("" = todas).
+	// Status: pending | in_progress | review | completed | blocked | all ("" = todas).
 	Status string
 	// OnlyReady mantém só tarefas com todas as dependências concluídas.
 	OnlyReady bool
@@ -93,11 +96,14 @@ type TaskList struct {
 	Truncated bool
 }
 
+// ImplementationTasks lê a fila do backlog, no formato do tasks.json.
 func (a *App) ImplementationTasks(q TaskQuery) (*TaskList, error) {
-	board, err := a.st.LoadTasks()
+	p, err := a.Plan()
 	if err != nil {
 		return nil, err
 	}
+	prev, _ := a.st.LoadTasks()
+	board := plan.ToBoard(p, prev)
 	byID := map[string]model.Task{}
 	for _, t := range board.Tasks {
 		byID[t.ID] = t
@@ -105,7 +111,7 @@ func (a *App) ImplementationTasks(q TaskQuery) (*TaskList, error) {
 	out := []TaskView{}
 	filter := strings.ToLower(strings.TrimSpace(q.Status))
 	for _, t := range board.Tasks {
-		if filter != "" && filter != "all" && t.Status != filter {
+		if filter != "" && filter != "all" && t.Status != model.NormalizeStatus(filter) {
 			continue
 		}
 		blocked := []string{}
@@ -134,53 +140,37 @@ type TaskUpdateResult struct {
 	Progress int    `json:"overall_progress_percentage"`
 }
 
+// MarkTaskStatus muda o status de uma tarefa (ferramenta legada, mantida para
+// agentes e integrações que usam o tasks.json). As notas entram datadas nas
+// notas do item.
 func (a *App) MarkTaskStatus(id, status, notes, source string) (*TaskUpdateResult, error) {
 	a.tx.Lock()
 	defer a.tx.Unlock()
 
-	board, err := a.st.LoadTasks()
+	p, err := a.loadPlan()
 	if err != nil {
 		return nil, err
 	}
-	task := board.ByID(id)
-	if task == nil {
-		available := []string{}
-		for _, t := range board.Tasks {
-			available = append(available, t.ID)
+	item := p.Item(id)
+	if item == nil || !item.Actionable() {
+		if len(p.Items) == 0 {
+			return nil, model.NotFound("tarefa %q não encontrada; rode generate_ai_prd primeiro", id)
 		}
-		if len(available) > 8 {
-			available = available[:8]
-		}
-		return nil, model.NotFound("tarefa %q não encontrada (existentes: %s…); rode generate_ai_prd primeiro",
-			id, strings.Join(available, ", "))
+		return nil, itemNotFound(p, id)
 	}
-	task.Status = model.NormalizeStatus(status)
-	if notes != "" {
-		task.Notes = notes
+	a.setStatus(item, status)
+	if notes = strings.TrimSpace(notes); notes != "" {
+		line := fmt.Sprintf("- %s (%s): %s", a.timestamp()[:10], plan.StatusLabels[item.Status], notes)
+		item.Notes = strings.TrimSpace(item.Notes + "\n" + line)
 	}
-	task.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-
-	if err := a.st.SaveTasks(board); err != nil {
+	item.UpdatedAt = a.timestamp()
+	if err := a.commitPlan(p, []*model.WorkItem{item}, nil, source,
+		fmt.Sprintf("%s → %s", item.ID, item.Status)); err != nil {
 		return nil, err
 	}
-
-	// Reflete o progresso no canvas (RF022).
-	if d, err := a.st.LoadDiagram(); err == nil {
-		if prd.SyncNodeStatus(d, board) {
-			_ = a.saveDiagram(d)
-		}
-	}
-	// Atualiza os checkboxes do ai-prd.md, se ele existir.
-	a.refreshPRDCheckboxes(board)
-
-	a.emit(hub.Event{
-		Type: hub.EventTasks, Source: source, Path: store.FileTasks,
-		Message: fmt.Sprintf("%s → %s", task.ID, task.Status),
-		Payload: map[string]any{"task_id": task.ID, "status": task.Status,
-			"progress": board.ProgressPercentage()},
-	})
+	board, _ := a.st.LoadTasks()
 	return &TaskUpdateResult{
-		TaskID: task.ID, Updated: true, Status: task.Status,
+		TaskID: item.ID, Updated: true, Status: item.Status,
 		Progress: board.ProgressPercentage(),
 	}, nil
 }

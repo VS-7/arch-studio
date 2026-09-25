@@ -9,6 +9,7 @@
 //
 //	archcode-desktop [pasta-do-projeto]     abre a janela (padrão: último projeto)
 //	archcode-desktop mcp --dir <pasta>      servidor MCP em stdio, sem janela
+//	archcode-desktop hook <nome> [args]     hooks do Git instalados pela janela (commit-msg, pre-push)
 package main
 
 import (
@@ -55,6 +56,12 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "hook":
+			if len(os.Args) < 3 {
+				fmt.Fprintln(os.Stderr, "uso: archcode-desktop hook commit-msg <arquivo> | pre-push")
+				os.Exit(1)
+			}
+			os.Exit(studio.RunHook(os.Args[2], os.Args[3:], os.Stdin, os.Stdout, os.Stderr, version))
 		case "version", "--version", "-v":
 			fmt.Printf("archcode-desktop %s (%s/%s)\n", version, runtime.GOOS, runtime.GOARCH)
 			return

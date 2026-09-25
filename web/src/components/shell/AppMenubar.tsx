@@ -17,7 +17,7 @@ import {
 } from '../ui/menubar'
 import { KindGlyph } from '../uml/UmlGlyph'
 import type { ProjectActions } from './DesktopProjects'
-import { VIEW_ICON, VIEW_ORDER } from './viewMeta'
+import { IMPLEMENTATION_VIEWS, VIEW_ICON, VIEW_ORDER } from './viewMeta'
 
 export interface MenuActions {
   newDiagram: (kind: UMLKind) => void
@@ -51,7 +51,7 @@ export interface MenuActions {
   project: ProjectActions | null
 }
 
-export function AppMenubar({ actions, theme, onTheme, panels, onPanels, executive, onExecutive, archActive }: {
+export function AppMenubar({ actions, theme, onTheme, panels, onPanels, executive, onExecutive, sprintFocus, onSprintFocus, archActive }: {
   actions: MenuActions
   theme: ThemePreference
   onTheme: (t: ThemePreference) => void
@@ -59,6 +59,8 @@ export function AppMenubar({ actions, theme, onTheme, panels, onPanels, executiv
   onPanels: (p: { left: boolean; right: boolean }) => void
   executive: boolean
   onExecutive: (v: boolean) => void
+  sprintFocus: boolean
+  onSprintFocus: (v: boolean) => void
   archActive: boolean
 }) {
   return (
@@ -140,6 +142,9 @@ export function AppMenubar({ actions, theme, onTheme, panels, onPanels, executiv
           <MenubarCheckboxItem disabled={!archActive} checked={executive} onCheckedChange={onExecutive}>
             Visão executiva (arquitetura)
           </MenubarCheckboxItem>
+          <MenubarCheckboxItem disabled={!archActive} checked={sprintFocus} onCheckedChange={onSprintFocus}>
+            Destacar a sprint ativa (arquitetura)
+          </MenubarCheckboxItem>
           <MenubarSeparator />
           <MenubarLabel>Tema</MenubarLabel>
           <MenubarCheckboxItem checked={theme === 'light'} onCheckedChange={() => onTheme('light')}><Sun />Claro</MenubarCheckboxItem>
@@ -159,6 +164,18 @@ export function AppMenubar({ actions, theme, onTheme, panels, onPanels, executiv
           <MenubarItem onSelect={actions.autoLayoutAll}><LayoutGrid />Reorganizar todos os diagramas</MenubarItem>
           <MenubarSeparator />
           <MenubarItem disabled={!actions.importMermaid} onSelect={() => actions.importMermaid?.()}><Network />Mermaid da arquitetura…</MenubarItem>
+        </MenubarContent>
+      </MenubarMenu>
+
+      <MenubarMenu>
+        <MenubarTrigger>Implementação</MenubarTrigger>
+        <MenubarContent>
+          {IMPLEMENTATION_VIEWS.map((view) => {
+            const Icon = VIEW_ICON[view]
+            return <MenubarItem key={view} onSelect={() => actions.openView(view)}><Icon />{VIEW_LABEL[view]}</MenubarItem>
+          })}
+          <MenubarSeparator />
+          <MenubarItem onSelect={() => actions.openView('tasks')}><Bot />Fila de implementação (AI-PRD)</MenubarItem>
         </MenubarContent>
       </MenubarMenu>
 

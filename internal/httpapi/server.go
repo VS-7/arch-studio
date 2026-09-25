@@ -144,6 +144,9 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/export/svg", s.exportSVG)
 	m.HandleFunc("GET /api/export/uml/{file}", s.exportUMLSVG)
 
+	// Módulo de Implementação
+	s.planRoutes()
+
 	// Tempo real
 	m.HandleFunc("/ws", s.serveWS)
 

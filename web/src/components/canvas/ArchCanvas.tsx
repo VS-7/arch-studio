@@ -46,6 +46,8 @@ interface Props {
   highlight: string | null
   /** Ids visíveis; quando definido, os demais aparecem esmaecidos (Modo Pitch). */
   spotlight?: Set<string> | null
+  /** Selo da sprint por componente ("S02"), vindo do backlog. */
+  sprintBadges?: Record<string, string>
   selectedId: string | null
   onSelect: (id: string | null, kind: 'node' | 'edge') => void
   /** Recebe os comandos do canvas; null ao desmontar. */
@@ -71,6 +73,7 @@ function nextLabel(diagram: Diagram, type: string): string {
 
 function toFlowNodes(
   diagram: Diagram, executive: boolean, highlight: string | null, spotlight?: Set<string> | null, selected?: Set<string>,
+  badges?: Record<string, string>,
 ): ArchFlowNode[] {
   const visible = diagram.nodes.filter((n) => !executive || n.data.executive !== false)
   // Grupos primeiro: React Flow desenha na ordem do array, então eles ficam atrás.
@@ -92,6 +95,7 @@ function toFlowNodes(
       __executive: executive,
       __highlight: highlight === n.id,
       __dimmed: spotlight ? !spotlight.has(n.id) : false,
+      __sprint: badges?.[n.id],
     },
   })) as ArchFlowNode[]
 }
@@ -143,7 +147,7 @@ function toFlowEdges(diagram: Diagram, executive: boolean, spotlight?: Set<strin
 }
 
 export function ArchCanvas({
-  diagram, executive, highlight, spotlight, selectedId, onSelect, onReady, onAutoLayout, interactive = true, onDirty,
+  diagram, executive, highlight, spotlight, sprintBadges, selectedId, onSelect, onReady, onAutoLayout, interactive = true, onDirty,
   tool, onToolDone, onZoom, onSelectionChange,
 }: Props) {
   const toast = useToast()
@@ -162,7 +166,8 @@ export function ArchCanvas({
   const pendingSelect = useRef<string[] | null>(null)
   const diagramRef = useRef(diagram)
   diagramRef.current = diagram
-  const signature = `${diagram.last_modified}|${executive}|${highlight}|${spotlight ? [...spotlight].join(',') : ''}`
+  const badgeKey = sprintBadges ? Object.entries(sprintBadges).map(([k, v]) => `${k}=${v}`).join(',') : ''
+  const signature = `${diagram.last_modified}|${executive}|${highlight}|${spotlight ? [...spotlight].join(',') : ''}|${badgeKey}`
   const lastSignature = useRef('')
 
   // Sincroniza com o servidor apenas quando o diagrama realmente mudou e o
@@ -182,10 +187,10 @@ export function ArchCanvas({
       edges: selection.current.edges.filter((id) => diagram.edges.some((e) => e.id === id)),
     }
     const set = new Set([...selection.current.nodes, ...selection.current.edges])
-    setNodes(toFlowNodes(diagram, executive, highlight, spotlight, set))
+    setNodes(toFlowNodes(diagram, executive, highlight, spotlight, set, sprintBadges))
     setEdges(toFlowEdges(diagram, executive, spotlight, set))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, diagram, executive, highlight, spotlight, setNodes, setEdges])
+  }, [signature, diagram, executive, highlight, spotlight, sprintBadges, setNodes, setEdges])
 
   useExternalSelection(selectedId, setNodes, setEdges, (id) => {
     const isEdge = diagramRef.current.edges.some((e) => e.id === id)

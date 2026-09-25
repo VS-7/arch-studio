@@ -35,6 +35,11 @@ import {
   EXPLORER_DEFAULT, LEFT_DEFAULT, LEFT_MIN, RIGHT_DEFAULT, RIGHT_MIN, useWorkspaceLayout,
 } from './components/shell/useWorkspaceLayout'
 import { useWorkspaceTabs } from './components/shell/useWorkspaceTabs'
+import { ConventionsView } from './components/implementation/ConventionsView'
+import { MemoryView } from './components/implementation/MemoryView'
+import { PlanningView } from './components/implementation/PlanningView'
+import { ResumeView } from './components/implementation/ResumeView'
+import { SkillsView } from './components/implementation/SkillsView'
 import { TasksView } from './components/tasks/TasksView'
 import { Button, IconAction, Spinner, ToastProvider, useToast } from './components/ui'
 import { ConfirmProvider, useConfirm } from './components/ui/confirm'
@@ -62,6 +67,8 @@ function AppWithEvents() {
   // Mudanças feitas por agentes de IA ou por edições externas de arquivo são
   // anunciadas: o usuário precisa perceber que o canvas mudou sob seus pés.
   const onEvent = useCallback((event: ServerEvent) => {
+    // Mudanças no .git (troca de branch, commits) só atualizam os painéis.
+    if (event.type === 'git_changed' && event.source === 'disk') return
     if (event.source === 'ai' && event.message) toast('ai', `IA: ${event.message}`)
     else if (event.source === 'disk' && event.path) toast('info', `Arquivo alterado fora do Studio: ${event.path}`)
     else if (event.source === 'cli' && event.message) toast('info', event.message)
@@ -89,6 +96,25 @@ function Shell() {
   const projects = useDesktopProjects()
 
   const diagrams = useMemo(() => snapshot?.uml_diagrams ?? [], [snapshot?.uml_diagrams])
+
+  // Selo da sprint de cada componente: a primeira sprint (não encerrada) em que
+  // ele ainda tem trabalho aberto; e os componentes da sprint ativa.
+  const { sprintBadges, activeSprintNodes } = useMemo(() => {
+    const badges: Record<string, string> = {}
+    const active = new Set<string>()
+    const plan = snapshot?.plan
+    if (!plan) return { sprintBadges: badges, activeSprintNodes: active }
+    const open = new Map(plan.sprints.filter((s) => s.status !== 'closed').map((s) => [s.number, s]))
+    const best = new Map<string, number>()
+    for (const it of plan.items) {
+      if (!it.component_id || !it.sprint || it.archived || it.status === 'completed' || !open.has(it.sprint)) continue
+      const cur = best.get(it.component_id)
+      if (cur === undefined || it.sprint < cur) best.set(it.component_id, it.sprint)
+      if (open.get(it.sprint)?.status === 'active') active.add(it.component_id)
+    }
+    for (const [node, n] of best) badges[node] = `S${String(n).padStart(2, '0')}`
+    return { sprintBadges: badges, activeSprintNodes: active }
+  }, [snapshot?.plan])
   const workspace = useWorkspaceTabs(diagrams)
   const { active, activeKey, activeDiagram, open: openWorkspaceTab, close: closeTab } = workspace
 
@@ -98,6 +124,8 @@ function Shell() {
   const [focusName, setFocusName] = useState(0)
   const [multiCount, setMultiCount] = useState(0)
   const [executive, setExecutive] = useState(false)
+  // Esmaece no canvas os componentes sem trabalho na sprint ativa.
+  const [sprintFocus, setSprintFocus] = useState(false)
   const [pitch, setPitch] = useState(false)
   const [zoom, setZoom] = useState(1)
   // Ficha de caso de uso a abrir para edição ao entrar na aba Casos de Uso.
@@ -209,6 +237,19 @@ function Shell() {
     }, 0)
   }, [archHandle, openTab])
 
+  // "Onde parei" abre junto com o projeto (uma vez por sessão do navegador)
+  // quando há backlog: é o ponto de partida para retomar o trabalho.
+  const hasBacklog = (snapshot?.plan?.items.length ?? 0) > 0
+  useEffect(() => {
+    if (!hasBacklog) return
+    const key = 'archcode-resume-opened'
+    try {
+      if (sessionStorage.getItem(key)) return
+      sessionStorage.setItem(key, '1')
+    } catch { /* sem storage: abre mesmo assim */ }
+    openTab({ type: 'view', view: 'resume' })
+  }, [hasBacklog, openTab])
+
   // Centraliza no elemento selecionado a partir do Model Explorer.
   useEffect(() => {
     if (selection?.scope === 'uml' && selection.kind === 'element' && umlHandle && focusName === 0) umlHandle.focus(selection.id)
@@ -296,6 +337,7 @@ function Shell() {
     <div className="flex h-full flex-col bg-background text-foreground">
       <TitleBar actions={actions} projectName={snapshot.manifest.project_name} version={snapshot.manifest.version}
         panels={panels} onPanels={layout.setPanels} executive={executive} onExecutive={setExecutive}
+        sprintFocus={sprintFocus} onSprintFocus={setSprintFocus}
         archActive={archActive} generating={generating} />
 
       {/* Área de trabalho ------------------------------------------------------- */}
@@ -331,6 +373,8 @@ function Shell() {
                 diagram={snapshot.diagram}
                 executive={executive}
                 highlight={highlight}
+                sprintBadges={sprintBadges}
+                spotlight={sprintFocus ? activeSprintNodes : null}
                 selectedId={selection?.scope === 'arch' ? selection.id : null}
                 onSelect={(id, kind) => setSelection(id ? { scope: 'arch', kind, id } : null)}
                 onSelectionChange={(sel) => setMultiCount(sel.nodes.length + sel.edges.length)}
@@ -375,6 +419,11 @@ function Shell() {
                 {active.view === 'api' && <ApiView snapshot={snapshot} />}
                 {active.view === 'pricing' && <PricingView snapshot={snapshot} />}
                 {active.view === 'tasks' && <TasksView snapshot={snapshot} onGeneratePRD={() => void generatePRD()} />}
+                {active.view === 'planning' && <PlanningView snapshot={snapshot} />}
+                {active.view === 'resume' && <ResumeView snapshot={snapshot} onOpenPlanning={() => openTab({ type: 'view', view: 'planning' })} />}
+                {active.view === 'memory' && <MemoryView />}
+                {active.view === 'skills' && <SkillsView />}
+                {active.view === 'conventions' && <ConventionsView />}
               </div>
             )}
             </ErrorBoundary>

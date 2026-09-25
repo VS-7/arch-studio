@@ -772,6 +772,10 @@ type Snapshot struct {
 	Document     model.DocumentMeta     `json:"document"`
 	Mermaid      string                 `json:"mermaid"`
 	AIPRDExists  bool                   `json:"ai_prd_exists"`
+	// Plan é o backlog e as sprints (.arch/plan/); Conventions, as convenções
+	// do projeto (padrões de compatibilidade quando o arquivo não existe).
+	Plan        *model.Plan        `json:"plan"`
+	Conventions *model.Conventions `json:"conventions"`
 }
 
 func (s *Store) Snapshot() (*Snapshot, error) {
@@ -818,6 +822,14 @@ func (s *Store) Snapshot() (*Snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
+	plan, err := s.LoadPlan()
+	if err != nil {
+		return nil, err
+	}
+	conventions, err := s.LoadConventions()
+	if err != nil {
+		return nil, err
+	}
 	mermaid, _ := s.ReadFile(FileMacroMmd)
 	return &Snapshot{
 		Manifest:     manifest,
@@ -832,6 +844,8 @@ func (s *Store) Snapshot() (*Snapshot, error) {
 		Document:     *document,
 		Mermaid:      string(mermaid),
 		AIPRDExists:  s.Exists(FileAIPRD),
+		Plan:         plan,
+		Conventions:  conventions,
 	}, nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/server"
@@ -72,16 +73,10 @@ func Open(cfg Config, bus *hub.Hub) (*Studio, error) {
 	return s, nil
 }
 
-// Init cria a estrutura canônica de um projeto no diretório.
+// Init cria a estrutura canônica de um projeto no diretório e prepara o
+// Módulo de Implementação: convenções, as skills sugeridas para o stack e o
+// backlog gerado da arquitetura de exemplo.
 func Init(dir string, opts project.Options) (*project.Result, error) {
-	st, err := openStore(dir)
-	if err != nil {
-		return nil, err
-	}
-	return project.Init(st, opts)
-}
-
-func openStore(dir string) (*store.Store, error) {
 	if dir == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -89,7 +84,66 @@ func openStore(dir string) (*store.Store, error) {
 		}
 		dir = cwd
 	}
+	st, err := store.New(dir)
+	if err != nil {
+		return nil, err
+	}
+	res, err := project.Init(st, opts)
+	if err != nil {
+		return nil, err
+	}
+	a := app.New(st, nil)
+	if !a.HasConventions() {
+		if _, err := a.InitConventions("", false, hub.SourceCLI); err == nil {
+			res.Created = append(res.Created, store.FileConventions)
+		}
+	}
+	if ov, err := a.Skills(); err == nil {
+		if names, err := a.InstallSkills(ov.Suggested, false, hub.SourceCLI); err == nil {
+			for _, n := range names {
+				res.Created = append(res.Created, store.SkillPath(n))
+			}
+		}
+	}
+	if !opts.Empty {
+		if sync, err := a.SyncBacklog(false, hub.SourceCLI); err == nil && sync.Counts["added"] > 0 {
+			res.Created = append(res.Created, fmt.Sprintf("%s/ (%d itens no backlog)", store.DirPlan, sync.Counts["added"]))
+		}
+	}
+	return res, nil
+}
+
+// openStore abre o projeto do diretório. Sem diretório, vale o atual ou,
+// como no Git, o primeiro diretório acima dele com .arch/manifest.yaml — os
+// hooks e o MCP podem rodar de uma subpasta do repositório.
+func openStore(dir string) (*store.Store, error) {
+	if dir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+		dir = FindRoot(cwd)
+	}
 	return store.New(dir)
+}
+
+// FindRoot devolve o primeiro diretório, de start para cima, que contém um
+// projeto ArchCode Studio; sem nenhum, devolve o próprio start.
+func FindRoot(start string) string {
+	abs, err := filepath.Abs(start)
+	if err != nil {
+		return start
+	}
+	for d := abs; ; {
+		if info, err := os.Stat(filepath.Join(d, store.FileManifest)); err == nil && !info.IsDir() {
+			return d
+		}
+		parent := filepath.Dir(d)
+		if parent == d {
+			return abs
+		}
+		d = parent
+	}
 }
 
 // Root devolve o diretório do projeto.

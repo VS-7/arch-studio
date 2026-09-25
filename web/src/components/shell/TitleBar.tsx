@@ -9,7 +9,7 @@ import { Button as UIButton } from '../ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { AppMenubar, type MenuActions } from './AppMenubar'
 
-export function TitleBar({ actions, projectName, version, panels, onPanels, executive, onExecutive, archActive, generating }: {
+export function TitleBar({ actions, projectName, version, panels, onPanels, executive, onExecutive, sprintFocus, onSprintFocus, archActive, generating }: {
   actions: MenuActions
   projectName: string
   version: string
@@ -17,6 +17,8 @@ export function TitleBar({ actions, projectName, version, panels, onPanels, exec
   onPanels: (p: { left: boolean; right: boolean }) => void
   executive: boolean
   onExecutive: (v: boolean) => void
+  sprintFocus: boolean
+  onSprintFocus: (v: boolean) => void
   archActive: boolean
   generating: boolean
 }) {
@@ -27,7 +29,8 @@ export function TitleBar({ actions, projectName, version, panels, onPanels, exec
         <Waypoints size={14} />
       </span>
       <AppMenubar actions={actions} theme={theme.preference} onTheme={theme.setPreference}
-        panels={panels} onPanels={onPanels} executive={executive} onExecutive={onExecutive} archActive={archActive} />
+        panels={panels} onPanels={onPanels} executive={executive} onExecutive={onExecutive}
+        sprintFocus={sprintFocus} onSprintFocus={onSprintFocus} archActive={archActive} />
 
       <div className="mx-auto hidden min-w-0 items-center gap-1.5 truncate text-[12px] text-muted-foreground lg:flex">
         <span className="truncate font-medium text-foreground">{projectName}</span>

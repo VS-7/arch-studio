@@ -45,6 +45,7 @@ export const SECURITY_SCHEMES = ['', 'JWT', 'mTLS', 'OAuth2', 'API Key', 'Basic 
 export const STATUS_META: Record<string, { label: string; color: string; dot: string }> = {
   pending: { label: 'Pendente', color: 'text-slate-400', dot: '#64748b' },
   in_progress: { label: 'Em andamento', color: 'text-amber-400', dot: '#f59e0b' },
+  review: { label: 'Em revisão', color: 'text-violet-400', dot: '#8b5cf6' },
   completed: { label: 'Concluído', color: 'text-emerald-400', dot: '#10b981' },
   blocked: { label: 'Bloqueado', color: 'text-rose-400', dot: '#ef4444' },
 }

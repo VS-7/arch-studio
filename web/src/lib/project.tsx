@@ -38,6 +38,7 @@ const RELOAD_EVENTS = new Set([
   'diagram_changed', 'docs_changed', 'endpoints_changed', 'pricing_changed',
   'tasks_changed', 'manifest_changed', 'node_added', 'node_updated',
   'node_removed', 'edge_added', 'ai_prd_generated', 'uml_changed',
+  'plan_changed', 'conventions_changed',
 ])
 
 export function ProjectProvider({
