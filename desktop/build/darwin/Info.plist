@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Info.plist do ArchCode Studio.app, montado por `make desktop-macos`.
+  __VERSION__ é trocado pela versão do build. O identificador é o mesmo
+  application id da janela (main.go) e do .desktop do Linux.
+  LSMinimumSystemVersion acompanha o Go: a partir do 1.25 ele exige o macOS 12.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleName</key>
+	<string>ArchCode Studio</string>
+	<key>CFBundleDisplayName</key>
+	<string>ArchCode Studio</string>
+	<key>CFBundleExecutable</key>
+	<string>archcode-desktop</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.archcode.studio</string>
+	<key>CFBundleVersion</key>
+	<string>__VERSION__</string>
+	<key>CFBundleShortVersionString</key>
+	<string>__VERSION__</string>
+	<key>CFBundleIconFile</key>
+	<string>icons</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>pt-BR</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.developer-tools</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>12.0.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 ArchCode Studio · Licença MIT</string>
+</dict>
+</plist>

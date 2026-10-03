@@ -53,6 +53,9 @@ Baixe em [Releases](https://github.com/VS-7/arch-studio/releases/latest) — mes
 | Fedora 40+ | `archcode-studio-<versão>-1.x86_64.rpm` | `sudo dnf install ./archcode-studio-*.rpm` |
 | Outras distros | `archcode-desktop-<versão>-linux-amd64.tar.gz` | extraia e rode `./archcode-desktop` (requer GTK 4.14+ e WebKitGTK 6.0) |
 | Windows 10/11 | `archcode-desktop-<versão>-windows-amd64.zip` | extraia e rode o `.exe` |
+| macOS 12+ (Apple Silicon e Intel) | `archcode-desktop-<versão>-macos-universal.zip` | extraia e arraste o **ArchCode Studio** para Aplicativos (veja abaixo a primeira abertura) |
+
+> **macOS — primeira abertura:** o app não é notarizado pela Apple, então o macOS bloqueia a primeira execução de algo baixado da internet. Abra o app uma vez, clique em **OK** e vá em **Ajustes do Sistema → Privacidade e Segurança → Abrir Mesmo Assim**. Ou, no Terminal: `xattr -dr com.apple.quarantine "/Applications/ArchCode Studio.app"`. Os arquivos `archcode-studio-darwin-*` da release são o CLI, para o terminal — não o app.
 
 ### Docker
 
@@ -244,7 +247,8 @@ arch-studio/
 │   └── archcode-studio/          # CLI: um arquivo por comando (serve, mcp, init, relatórios, export)
 ├── desktop/                      # App desktop Wails v3 (módulo Go próprio, com CGO)
 │   ├── internal/workspace/       # Projeto aberto, recentes e handler da janela (testável sem GUI)
-│   └── build/linux/              # .desktop e pacotes .deb/.rpm (nfpm)
+│   ├── build/linux/              # .desktop e pacotes .deb/.rpm (nfpm)
+│   └── build/darwin/             # Info.plist do ArchCode Studio.app
 ├── internal/
 │   ├── studio/                   # Composition Root: store + app + watcher + HTTP + MCP de uma pasta
 │   ├── app/                      # Casos de uso — única camada que lê e muta o projeto
@@ -322,6 +326,7 @@ make release           # CLI para Linux, macOS (Intel e Apple Silicon) e Windows
 make desktop           # App desktop para o sistema atual (Linux: libgtk-4-dev libwebkitgtk-6.0-dev)
 make desktop-windows   # App desktop para Windows (compila de qualquer sistema, sem CGO)
 make desktop-package   # Pacotes Linux .deb, .rpm e .tar.gz em dist/
+make desktop-macos     # ArchCode Studio.app universal e .zip em dist/ (só no macOS, com Xcode CLT)
 make desktop-dev       # App desktop em modo desenvolvimento, com DevTools
 ```
 

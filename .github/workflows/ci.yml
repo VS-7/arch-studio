@@ -118,6 +118,54 @@ jobs:
             dist/*.zip
           if-no-files-found: error
 
+  desktop-macos:
+    # O app macOS só compila no macOS (CGO + Cocoa/WebKit). O runner arm64
+    # compila também para Intel e junta os dois num binário universal (lipo).
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            desktop/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Versão
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0-dev.${GITHUB_RUN_NUMBER}"; fi
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+
+      - name: Dependências do frontend
+        run: npm --prefix web ci
+
+      - name: ArchCode Studio.app (universal, em .zip)
+        run: make desktop-macos VERSION="$VERSION"
+
+      - name: Conferir o pacote como o usuário o recebe
+        run: |
+          mkdir -p /tmp/unzip && cd /tmp/unzip
+          unzip -q "$GITHUB_WORKSPACE/dist/archcode-desktop-$VERSION-macos-universal.zip"
+          app="ArchCode Studio.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          lipo "$app/Contents/MacOS/archcode-desktop" -verify_arch arm64 x86_64
+          test "$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")" = "$VERSION"
+          "$app/Contents/MacOS/archcode-desktop" version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archcode-desktop-macos
+          path: dist/*.zip
+          if-no-files-found: error
+
   installers:
     # Roda os instaladores deste commit (os do README) contra a última release
     # publicada, em cada sistema, e executa o binário instalado.
@@ -151,7 +199,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, desktop]
+    needs: [test, desktop, desktop-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -165,10 +213,12 @@ jobs:
       - run: npm --prefix web ci
       - run: make release VERSION=${GITHUB_REF_NAME#v}
 
+      # Pacotes do app desktop: Linux/Windows (archcode-desktop) e macOS (archcode-desktop-macos).
       - uses: actions/download-artifact@v4
         with:
-          name: archcode-desktop
+          pattern: archcode-desktop*
           path: dist/
+          merge-multiple: true
 
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS
@@ -186,5 +236,6 @@ jobs:
             ```
             **Fedora 40+**: `sudo dnf install ./archcode-studio-*.x86_64.rpm`
             **Windows 10/11**: extraia o `.zip` e rode `archcode-desktop-windows-amd64.exe`.
+            **macOS 12+ (Apple Silicon e Intel)**: extraia `archcode-desktop-*-macos-universal.zip` e arraste o **ArchCode Studio** para Aplicativos. O app não é notarizado pela Apple, então a primeira abertura é bloqueada: abra uma vez, clique em **OK** e depois em **Ajustes do Sistema → Privacidade e Segurança → Abrir Mesmo Assim**. Ou, no Terminal: `xattr -dr com.apple.quarantine "/Applications/ArchCode Studio.app"`.
 
             O CLI (`archcode-studio-<sistema>-<arquitetura>`) continua disponível para uso no terminal e em servidores.
