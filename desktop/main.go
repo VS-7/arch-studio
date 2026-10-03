@@ -33,7 +33,7 @@ import (
 )
 
 // version é sobrescrita no build via -ldflags "-X main.version=…".
-var version = "1.3.0"
+var version = "1.3.1"
 
 //go:embed appicon.png
 var appIcon []byte
